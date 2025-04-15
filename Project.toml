@@ -1,0 +1,13 @@
+name = "StabilityNonlinearDiffusion"
+uuid = "2b20ce42-f958-4640-814e-6651c116b2de"
+authors = ["Olivier Hénot", "Maxime Payan"]
+version = "1.0.0"
+
+[deps]
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+IntervalArithmetic = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
+RadiiPolynomial = "f2081a94-c849-46b6-8dc9-07bb90ed72a9"
+
+[compat]
+IntervalArithmetic = "0.22.28"
+RadiiPolynomial = "0.8.20"
