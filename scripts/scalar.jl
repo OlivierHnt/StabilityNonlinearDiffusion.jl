@@ -63,7 +63,7 @@ Z₁ = max(opnorm(I - project(approx_DF⁻¹, domain(L_bar), CosFourier(3K, ω)^
 opnorm_approxDF⁻¹Δ = max(opnorm(approx_DF⁻¹.finite_matrix * project(Laplacian(), space(u_bar), space(u_bar)), 1),
                         opnorm(norm.(approx_DF⁻¹.sequence_tail, 1), 1))
 
-Z₂ = opnorm_approxDF⁻¹Δ * 2 * (1 + model.β)
+Z₂ = opnorm_approxDF⁻¹Δ * 2 * (1 + model.β) 
 
 #
 
@@ -107,6 +107,6 @@ Q = - (project(P_ext, CosFourier(M+K, ω)^1, CosFourier(M+2K, ω)^1) * project(L
 
 #
 
-μ = C₀(P, opnorm_approxDF⁻¹Δ, Z₂, ϵ_u; N, K) +
-    max(opnorm(Q - I, 1),
-        opnorm(norm.(P.W_bar * A_bar + A_bar * P.W_bar - [1.], 1), 1) + C₁(P.W_bar, A_bar; N, K) + C₃(P.W_bar, C_bar; N, K))
+μ = 1 - (C₀(P, opnorm_approxDF⁻¹Δ, Z₂, ϵ_u; N, K) +
+            max(opnorm(Q - I, 1),
+                opnorm(norm.(P.W_bar * A_bar + A_bar * P.W_bar - [1.], 1), 1) + C₁(P.W_bar, A_bar; N, K) + C₃(P.W_bar, C_bar; N, K)))

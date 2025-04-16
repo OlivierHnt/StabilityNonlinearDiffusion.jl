@@ -30,7 +30,7 @@ C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
 #     d₁₂ :: T
 #     d₂₁ :: T
 #     d₂₂ :: T
-#     # parameters of the reation
+#     # parameters of the reaction
 #     r₁  :: T
 #     r₂  :: T
 #     a₁  :: T
@@ -179,11 +179,11 @@ end
 
 function approx_inv(A)
     if size(A) == (1, 1)
-        # inv 1-by-1, i.e., scalar case
+        # inv 1-by-1, i.e., scalar case 
         return inv.(A)
     elseif size(A) == (2, 2)
         # inv 2-by-2
-        detA = RadiiPolynomial.LinearAlgebra.det(A)
+        detA = RadiiPolynomial.LinearAlgebra.det(A) 
         return inv(detA) * [A[2,2] -A[1,2] ; -A[2,1] A[1,1]]
     else
         error()
@@ -230,7 +230,7 @@ function solve_lyap(A)
         P₂_bar = -(A[1,1] * A[2,1] + A[1,2] * A[2,2]) * den
         P₃_bar =  (detA + A[1,1]^2 + A[1,2]^2)        * den
         return [P₁_bar P₂_bar ; P₂_bar P₃_bar]
-    else
+    else # In literature we can find algorithm for lyapunov n-by-n
         error()
     end
 end
@@ -261,8 +261,8 @@ function C₀(P, opnorm_approxinvΔ, Z₂, ϵ_u; N, K)
     PΔ = project(P, CosFourier.(M, ω) ^ n, CosFourier.(M+K, ω) ^ n) * project(Δ, CosFourier.(M, ω) ^ n, CosFourier.(M, ω) ^ n)
     #
     x = opnorm(norm.(P.W_bar, 1), 1)
-    y = inv(interval(π)*(M-K+1))^2 * opnorm(norm.([Δ] .* P.W_bar, 1), 1)
-    z = inv(interval(π)*(M-K+1)) * sum(l -> opnorm(norm.([∇[l]] .* P.W_bar, 1), 1), 1:d)
+    y = inv(ω*(M-K+1))^2 * opnorm(norm.([Δ] .* P.W_bar, 1), 1)
+    z = inv(ω*(M-K+1)) * sum(l -> opnorm(norm.([∇[l]] .* P.W_bar, 1), 1), 1:d)
 	return 2max(opnorm(PΔ, 1), x + y / 2 + z) * Z₂ / opnorm_approxinvΔ * ϵ_u
 end
 
@@ -270,32 +270,35 @@ function C₁(W_bar, A_bar; N, K)
     M = N+K
     Δ = Laplacian()
     d = _nspaces(space(W_bar[1]))
+    ω = frequency(space(W_bar[1]))
     ∇ = Gradient{d}()
     #
-    x = inv(interval(π)*(M-2K+1))^2 * opnorm(norm.(([Δ] .* W_bar) * A_bar, 1), 1) +
-        inv(interval(π)*(M+1))^2    * opnorm(norm.(([Δ] .* W_bar) * A_bar, Inf), Inf)
-    y = inv(interval(π)*(M-2K+1)) * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, 1), 1), 1:d)
-    z = inv(interval(π)*(M+1))    * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, Inf), Inf), 1:d)
+    x = inv(ω*(M-2K+1))^2 * opnorm(norm.(([Δ] .* W_bar) * A_bar, 1), 1) +
+        inv(ω*(M+1))^2    * opnorm(norm.(([Δ] .* W_bar) * A_bar, 1), Inf)
+    y = inv(ω*(M-2K+1)) * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, 1), 1), 1:d)
+    z = inv(ω*(M+1))    * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, 1), Inf), 1:d)
 	return x / 2 + y + z
 end
 
 function C₂(W_bar, B_bar; N, K)
     M = N+K
     d = _nspaces(space(W_bar[1]))
+    ω = frequency(space(W_bar[1]))
     ∇ = Gradient{d}()
     #
-    x = sum(l -> inv(interval(π)*(M-K+1)) * (opnorm(norm.(B_bar[l], 1), 1) + opnorm(norm.(B_bar[l], Inf), Inf)), 1:d) * opnorm(norm.(W_bar, 1), 1)
-    y = sum(l -> inv(interval(π)*(M-2K+1)) * opnorm(norm.(W_bar * B_bar[l], 1), 1) + inv(interval(π)*(M+1)) * opnorm(norm.(W_bar * B_bar[l], Inf), Inf), 1:d)
-    z = sum(l -> inv(interval(π)*(M-2K+1)) * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], 1), 1) + inv(interval(π)*(M+1)) * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], Inf), Inf), 1:d)
+    x = sum(l -> inv(ω*(M-K+1)) * (opnorm(norm.(B_bar[l], 1), 1) + opnorm(norm.(B_bar[l], 1), Inf)), 1:d) * opnorm(norm.(W_bar, 1), 1)
+    y = sum(l -> inv(ω*(M-2K+1)) * opnorm(norm.(W_bar * B_bar[l], 1), 1) + inv(ω*(M+1)) * opnorm(norm.(W_bar * B_bar[l], 1), Inf), 1:d)
+    z = sum(l -> inv(ω*(M-2K+1))^2 * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], 1), 1) + inv(ω*(M+1))^2 * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], 1), Inf), 1:d)
     return (x + y + z) / 2
 end
 
 function C₃(W_bar, C_bar; N, K)
     M = N+K
+    ω = frequency(space(W_bar[1]))
     #
-    x = inv(interval(π)*(M-K+1))^2  * (opnorm(norm.(C_bar, 1), 1) + opnorm(norm.(C_bar, Inf), Inf)) * opnorm(norm.(W_bar, 1), 1)
-    y = inv(interval(π)*(M-2K+1))^2 * opnorm(norm.(W_bar * C_bar, 1), 1) +
-        inv(interval(π)*(M+1))^2    * opnorm(norm.(W_bar * C_bar, Inf), Inf)
+    x = inv(ω*(M-K+1))^2  * (opnorm(norm.(C_bar, 1), 1) + opnorm(norm.(C_bar, 1), Inf)) * opnorm(norm.(W_bar, 1), 1)
+    y = inv(ω*(M-2K+1))^2 * opnorm(norm.(W_bar * C_bar, 1), 1) +
+        inv(ω*(M+1))^2    * opnorm(norm.(W_bar * C_bar, 1), Inf)
     return (x + y) / 2
 end
 

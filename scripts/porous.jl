@@ -82,30 +82,40 @@ function interpolate(u_grid, t)
     end
 end
 
-u₁_grid, u₂_grid = extract_uv_series("profils.txt")
+u₁_grid, u₂_grid = extract_uv_series("scripts/profils.txt") #Needed to add scripts/...
 
-import ApproxFun
-u1_approx = ApproxFun.Fun(t -> interpolate(u₁_grid, t), ApproxFun.Laurent(ApproxFun.PeriodicSegment(-1, 1)), 200)
-u2_approx = ApproxFun.Fun(t -> interpolate(u₂_grid, t), ApproxFun.Laurent(ApproxFun.PeriodicSegment(-1, 1)), 200)
+import ApproxFun, ApproxFunFourier
+# u1_approx = ApproxFun.Fun(t -> interpolate(u₁_grid, t), ApproxFun.Laurent(ApproxFun.PeriodicSegment(-1, 1)), 200)
+# u2_approx = ApproxFun.Fun(t -> interpolate(u₂_grid, t), ApproxFun.Laurent(ApproxFun.PeriodicSegment(-1, 1)), 200)
+# Is that in CosFourier space? Almost but certainly not
+u1_approx_cos = ApproxFun.Fun(t -> interpolate(u₁_grid, t), ApproxFun.CosSpace(ApproxFun.PeriodicSegment(-1, 1)), 200)
+u2_approx_cos = ApproxFun.Fun(t -> interpolate(u₂_grid, t), ApproxFun.CosSpace(ApproxFun.PeriodicSegment(-1, 1)), 200)
 
 ## visual check
 
 fig = Figure()
 
 ax1 = Axis(fig[1,1])
-lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> real(u1_approx(t)); linewidth = 4, color = :red)
+# lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> real(u1_approx(t)); linewidth = 4, color = :red)
+lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> u1_approx_cos(t); linewidth = 4, color = :green)
 scatter!(ax1, Point2f.(LinRange(0, 1, length(u₁_grid)), u₁_grid))
 
 ax2 = Axis(fig[1,2])
-lines!(ax2, LinRange(0, 1, length(u₂_grid)), t -> real(u2_approx(t)); linewidth = 4, color = :red)
+# lines!(ax2, LinRange(0, 1, length(u₂_grid)), t -> real(u2_approx(t)); linewidth = 4, color = :red)
+lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> u2_approx_cos(t); linewidth = 4, color = :green)
 scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))
 
 ##
 
-K = 50
-u1 = Sequence(CosFourier(K, mid(ω)), [real(u1_approx.coefficients[i]) for i = 1:2:2K+1])
-u2 = Sequence(CosFourier(K, mid(ω)), [real(u2_approx.coefficients[i]) for i = 1:2:2K+1])
+K = 100
+# u1 = Sequence(CosFourier(K, mid(ω)), [real(u1_approx.coefficients[i]) for i = 1:2:2K+1])
+# u2 = Sequence(CosFourier(K, mid(ω)), [real(u2_approx.coefficients[i]) for i = 1:2:2K+1])
 
-u_guess = Sequence(CosFourier(K, mid(ω))^2, [u1.coefficients ; u2.coefficients])
+u1_cos = Sequence(CosFourier(K, mid(ω)), u1_approx_cos.coefficients[1:K+1])
+u2_cos = Sequence(CosFourier(K, mid(ω)), u2_approx_cos.coefficients[1:K+1])
 
-u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
+# u_guess = Sequence(CosFourier(K, mid(ω))^2, [u1.coefficients ; u2.coefficients])
+u_guess_cos = Sequence(CosFourier(K, mid(ω))^2, [u1_cos.coefficients ; u2_cos.coefficients])
+
+# u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
+u_approx_cos, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess_cos)
