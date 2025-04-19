@@ -96,8 +96,8 @@ A(model::Porous, u) = [model.d₁₁ * u[1]     model.d₁₂ * u[1]
 R(model::Porous, u) = [(model.r₁ + model.a₁ * u[1] + model.b₁ * u[2]) * u[1]
                        (model.r₂ + model.b₂ * u[1] + model.a₂ * u[2]) * u[2]]
 
-B(model::Porous, u) = [[model.d₁₂ * differentiate(u[2])     -model.d₁₂ * differentiate(u[1])
-                        model.d₂₁ * differentiate(u[2])     -model.d₂₁ * differentiate(u[1])]]
+B(model::Porous, u) = [[ model.d₁₂ * differentiate(u[2])     -model.d₁₂ * differentiate(u[1])
+                        -model.d₂₁ * differentiate(u[2])      model.d₂₁ * differentiate(u[1])]]
 
 C(model::Porous, u) = [model.r₁ + 2model.a₁ * u[1] + model.b₁ * u[2]                model.b₁ * u[1]
                                                      model.b₂ * u[2]     model.r₂ + model.b₂ * u[1] + 2model.a₂ * u[2]]
@@ -179,11 +179,11 @@ end
 
 function approx_inv(A)
     if size(A) == (1, 1)
-        # inv 1-by-1, i.e., scalar case 
+        # inv 1-by-1, i.e., scalar case
         return inv.(A)
     elseif size(A) == (2, 2)
         # inv 2-by-2
-        detA = RadiiPolynomial.LinearAlgebra.det(A) 
+        detA = RadiiPolynomial.LinearAlgebra.det(A)
         return inv(detA) * [A[2,2] -A[1,2] ; -A[2,1] A[1,1]]
     else
         error()

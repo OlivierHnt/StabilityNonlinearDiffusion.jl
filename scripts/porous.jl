@@ -21,8 +21,8 @@ model = Porous(; d₁₁ = I"2.4259", d₁₂ = I"0.6938", d₂₁ = I"9.2038", 
 # Newton's method
 
 mid_model = Porous(; d₁₁ = 2.4259, d₁₂ = 0.6938, d₂₁ = 9.2038, d₂₂ = 2.8059,
-                     r₁  = 9.9224, a₁  = 9.0512, b₁  = 6.6474,
-                     r₂  = 6.0865, b₂  = 2.3864, a₂  = 5.7359)
+                     r₁  = 9.9224, a₁  = -9.0512, b₁  = -6.6474,
+                     r₂  = 6.0865, b₂  = -2.3864, a₂  = -5.7359)
 
 K = 40
 
@@ -107,15 +107,29 @@ scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))
 
 ##
 
-K = 100
+K = 30
 # u1 = Sequence(CosFourier(K, mid(ω)), [real(u1_approx.coefficients[i]) for i = 1:2:2K+1])
 # u2 = Sequence(CosFourier(K, mid(ω)), [real(u2_approx.coefficients[i]) for i = 1:2:2K+1])
 
-u1_cos = Sequence(CosFourier(K, mid(ω)), u1_approx_cos.coefficients[1:K+1])
-u2_cos = Sequence(CosFourier(K, mid(ω)), u2_approx_cos.coefficients[1:K+1])
+# u1_cos = Sequence(CosFourier(K, mid(ω)), u1_approx_cos.coefficients[1:K+1])
+# u2_cos = Sequence(CosFourier(K, mid(ω)), u2_approx_cos.coefficients[1:K+1])
+u1_cos = Sequence(CosFourier(K, mid(ω)), u1_approx_cos.coefficients[1:K+1] .* [1 ; fill(0.5, K)])
+u2_cos = Sequence(CosFourier(K, mid(ω)), u2_approx_cos.coefficients[1:K+1] .* [1 ; fill(0.5, K)])
 
 # u_guess = Sequence(CosFourier(K, mid(ω))^2, [u1.coefficients ; u2.coefficients])
 u_guess_cos = Sequence(CosFourier(K, mid(ω))^2, [u1_cos.coefficients ; u2_cos.coefficients])
 
 # u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
 u_approx_cos, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess_cos)
+
+
+
+fig = Figure()
+
+ax1 = Axis(fig[1,1])
+lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> component(u_approx_cos, 1)(t); linewidth = 4, color = :green)
+scatter!(ax1, Point2f.(LinRange(0, 1, length(u₁_grid)), u₁_grid))
+
+ax2 = Axis(fig[1,2])
+lines!(ax2, LinRange(0, 1, length(u₁_grid)), t -> component(u_approx_cos, 2)(t); linewidth = 4, color = :green)
+scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))
