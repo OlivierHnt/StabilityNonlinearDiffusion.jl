@@ -43,7 +43,7 @@ u_bar = Sequence(CosFourier(K, ω)^1, interval(coefficients(u_approx)))
 A_bar = StabilityNonlinearDiffusion.A(model, [component(u_bar, 1)])
 L_bar = DF(model, u_bar, CosFourier(2K, ω)^1, CosFourier(3K, ω)^1)
 
-approx_DF⁻¹ = ApproxInverse(inv(project(mid.(L_bar), space(u_bar), space(u_bar))), approx_inv(A_bar))
+approx_DF⁻¹ = ApproxInverse(project(inv(project(mid.(L_bar), CosFourier(2K, ω)^1, CosFourier(2K, ω)^1)), space(u_bar), space(u_bar)), approx_inv(A_bar))
 
 #
 

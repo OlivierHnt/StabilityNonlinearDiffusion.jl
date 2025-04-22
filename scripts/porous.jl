@@ -106,7 +106,7 @@ scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))
 
 ##
 
-K = 220
+K = 300
 # u1 = Sequence(CosFourier(K, mid(ω)), [real(u1_approx.coefficients[i]) for i = 1:2:2K+1])
 # u2 = Sequence(CosFourier(K, mid(ω)), [real(u2_approx.coefficients[i]) for i = 1:2:2K+1])
 
@@ -147,7 +147,9 @@ u_bar = Sequence(CosFourier(K, ω)^2, interval(coefficients(u_approx_cos)))
 A_bar = StabilityNonlinearDiffusion.A(model, [component(u_bar, 1), component(u_bar, 2)])
 L_bar = DF(model, u_bar, CosFourier(2K, ω)^2, CosFourier(3K, ω)^2)
 
-approx_DF⁻¹ = ApproxInverse(inv(project(mid.(L_bar), space(u_bar), space(u_bar))), approx_inv(A_bar))
+approx_DF⁻¹ = ApproxInverse(
+    project(inv(project(mid.(L_bar), CosFourier(2K, ω)^2, CosFourier(2K, ω)^2)), space(u_bar), space(u_bar)),
+    approx_inv(A_bar))
 
 #
 
@@ -161,7 +163,7 @@ Y = norm(project(approx_DF⁻¹, space(F_bar), CosFourier(3K, ω)^2) * F_bar, X�
 C_bar = StabilityNonlinearDiffusion.C(model, [component(u_bar, 1),component(u_bar, 2)])
 
 Z₁ = #max(
-    opnorm(I - project(approx_DF⁻¹, codomain(L_bar), CosFourier(4K, ω)^2) * L_bar, X²)#,
+    opnorm(I - project(approx_DF⁻¹, CosFourier(3K, ω)^2, CosFourier(4K, ω)^2) * L_bar, X²)#,
         opnorm(norm.([1. 0. ; 0. 1.] - approx_DF⁻¹.sequence_tail * A_bar, 1), 1)
         # + inv((K + 1) * ω)^2 * opnorm(norm.(approx_DF⁻¹.sequence_tail, X), 1) * opnorm(norm.(C_bar, X), 1))
 
