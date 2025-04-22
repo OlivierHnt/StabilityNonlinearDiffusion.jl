@@ -55,7 +55,7 @@ Y = norm(project(approx_DF⁻¹, space(F_bar), CosFourier(3K, ω)^1) * F_bar, 1)
 
 C_bar = StabilityNonlinearDiffusion.C(model, [component(u_bar, 1)])
 
-Z₁ = max(opnorm(I - project(approx_DF⁻¹, domain(L_bar), CosFourier(3K, ω)^1) * L_bar, 1),
+Z₁ = max(opnorm(I - project(approx_DF⁻¹, codomain(L_bar), CosFourier(4K, ω)^1) * L_bar, 1),
          opnorm(norm.([1.] - approx_DF⁻¹.sequence_tail * A_bar, 1), 1) + inv((K + 1) * ω)^2 * opnorm(norm.(approx_DF⁻¹.sequence_tail, 1), 1) * opnorm(norm.(C_bar, 1), 1))
 
 #
@@ -63,7 +63,7 @@ Z₁ = max(opnorm(I - project(approx_DF⁻¹, domain(L_bar), CosFourier(3K, ω)^
 opnorm_approxDF⁻¹Δ = max(opnorm(approx_DF⁻¹.finite_matrix * project(Laplacian(), space(u_bar), space(u_bar)), 1),
                         opnorm(norm.(approx_DF⁻¹.sequence_tail, 1), 1))
 
-Z₂ = opnorm_approxDF⁻¹Δ * 2 * (1 + model.β) 
+Z₂ = opnorm_approxDF⁻¹Δ * 2 * (1 + model.β)
 
 #
 
