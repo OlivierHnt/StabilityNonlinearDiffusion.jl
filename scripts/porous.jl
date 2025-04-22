@@ -87,7 +87,6 @@ u₁_grid, u₂_grid = extract_uv_series("scripts/profils.txt") #Needed to add s
 import ApproxFun, ApproxFunFourier
 # u1_approx = ApproxFun.Fun(t -> interpolate(u₁_grid, t), ApproxFun.Laurent(ApproxFun.PeriodicSegment(-1, 1)), 200)
 # u2_approx = ApproxFun.Fun(t -> interpolate(u₂_grid, t), ApproxFun.Laurent(ApproxFun.PeriodicSegment(-1, 1)), 200)
-# Is that in CosFourier space? Almost but certainly not
 u1_approx_cos = ApproxFun.Fun(t -> interpolate(u₁_grid, t), ApproxFun.CosSpace(ApproxFun.PeriodicSegment(-1, 1)), 200)
 u2_approx_cos = ApproxFun.Fun(t -> interpolate(u₂_grid, t), ApproxFun.CosSpace(ApproxFun.PeriodicSegment(-1, 1)), 200)
 
@@ -102,7 +101,7 @@ scatter!(ax1, Point2f.(LinRange(0, 1, length(u₁_grid)), u₁_grid))
 
 ax2 = Axis(fig[1,2])
 # lines!(ax2, LinRange(0, 1, length(u₂_grid)), t -> real(u2_approx(t)); linewidth = 4, color = :red)
-lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> u2_approx_cos(t); linewidth = 4, color = :green)
+lines!(ax2, LinRange(0, 1, length(u₁_grid)), t -> u2_approx_cos(t); linewidth = 4, color = :green)
 scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))
 
 ##
@@ -121,15 +120,3 @@ u_guess_cos = Sequence(CosFourier(K, mid(ω))^2, [u1_cos.coefficients ; u2_cos.c
 
 # u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
 u_approx_cos, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess_cos)
-
-
-
-fig = Figure()
-
-ax1 = Axis(fig[1,1])
-lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> component(u_approx_cos, 1)(t); linewidth = 4, color = :green)
-scatter!(ax1, Point2f.(LinRange(0, 1, length(u₁_grid)), u₁_grid))
-
-ax2 = Axis(fig[1,2])
-lines!(ax2, LinRange(0, 1, length(u₁_grid)), t -> component(u_approx_cos, 2)(t); linewidth = 4, color = :green)
-scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))

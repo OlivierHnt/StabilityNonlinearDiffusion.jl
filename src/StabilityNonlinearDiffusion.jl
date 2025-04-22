@@ -5,7 +5,7 @@ using RadiiPolynomial, GLMakie
 # models
 
 @kwdef struct ScalarExample{T}
-    # parameters of the reation
+    # parameters of the reaction
     α :: T
     β :: T
 end
@@ -81,7 +81,7 @@ C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
     d₁₂ :: T
     d₂₁ :: T
     d₂₂ :: T
-    # parameters of the reation
+    # parameters of the reaction
     r₁  :: T
     a₁  :: T
     b₁  :: T
