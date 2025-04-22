@@ -183,8 +183,11 @@ function approx_inv(A)
         return inv.(A)
     elseif size(A) == (2, 2)
         # inv 2-by-2
-        detA = RadiiPolynomial.LinearAlgebra.det(A)
-        return inv(detA) * [A[2,2] -A[1,2] ; -A[2,1] A[1,1]]
+        detA = A[1,1] *̄ A[2,2] - A[1,2] *̄ A[2,1]
+        if detA == zero(A[1,1])
+            error("Matrix is singular")
+        end
+        return [inv(detA)] .*̄ [A[2,2] -A[1,2] ; -A[2,1] A[1,1]]
     else
         error()
     end

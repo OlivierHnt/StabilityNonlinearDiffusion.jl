@@ -11,8 +11,8 @@ using GLMakie
 #################
 
 model = Porous(; d₁₁ = I"2.4259", d₁₂ = I"0.6938", d₂₁ = I"9.2038", d₂₂ = I"2.8059",
-                 r₁  = I"9.9224", a₁  = I"9.0512", b₁  = I"6.6474",
-                 r₂  = I"6.0865", b₂  = I"2.3864", a₂  = I"5.7359")
+                 r₁  = I"9.9224", a₁  = I"-9.0512", b₁  = I"-6.6474",
+                 r₂  = I"6.0865", b₂  = I"-2.3864", a₂  = I"-5.7359")
 
 # domain [0, 1]
 
@@ -120,3 +120,56 @@ u_guess_cos = Sequence(CosFourier(K, mid(ω))^2, [u1_cos.coefficients ; u2_cos.c
 
 # u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
 u_approx_cos, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess_cos)
+
+
+
+fig = Figure()
+
+ax1 = Axis(fig[1,1])
+lines!(ax1, LinRange(0, 1, length(u₁_grid)), t -> component(u_approx_cos, 1)(t); linewidth = 4, color = :green)
+scatter!(ax1, Point2f.(LinRange(0, 1, length(u₁_grid)), u₁_grid))
+
+ax2 = Axis(fig[1,2])
+lines!(ax2, LinRange(0, 1, length(u₁_grid)), t -> component(u_approx_cos, 2)(t); linewidth = 4, color = :green)
+scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))
+
+#-------#
+# Proof #
+#-------#
+
+
+
+u_bar = Sequence(CosFourier(K, ω)^2, interval(coefficients(u_approx_cos)))
+
+# construct approx inverse
+
+A_bar = StabilityNonlinearDiffusion.A(model, [component(u_bar, 1), component(u_bar, 2)])
+L_bar = DF(model, u_bar, CosFourier(2K, ω)^2, CosFourier(3K, ω)^2)
+
+approx_DF⁻¹ = ApproxInverse(inv(project(mid.(L_bar), space(u_bar), space(u_bar))), approx_inv(A_bar))
+
+#
+
+F_bar = F(model, u_bar, CosFourier(2K, ω)^2)
+
+X = Ell1()
+X² = NormedCartesianSpace(X, Ell1())
+
+Y = norm(project(approx_DF⁻¹, space(F_bar), CosFourier(3K, ω)^2) * F_bar, X²)
+
+C_bar = StabilityNonlinearDiffusion.C(model, [component(u_bar, 1),component(u_bar, 2)])
+
+Z₁ = #max(
+    opnorm(I - project(approx_DF⁻¹, domain(L_bar), CosFourier(3K, ω)^2) * L_bar, X²)
+         #, opnorm(norm.([1.] - approx_DF⁻¹.sequence_tail * A_bar, X), 1) + inv((K + 1) * ω)^2 * opnorm(norm.(approx_DF⁻¹.sequence_tail, X), 1) * opnorm(norm.(C_bar, X), 1))
+
+#
+spy(abs.(mid.(coefficients(project(approx_DF⁻¹, domain(L_bar), CosFourier(3K, ω)^2)))))
+spy(abs.(mid.(coefficients(I - project(approx_DF⁻¹, domain(L_bar), CosFourier(3K, ω)^2) * L_bar))))
+spy(abs.(mid.(coefficients(L_bar))))
+
+#opnorm_approxDF⁻¹Δ = max(opnorm(approx_DF⁻¹.finite_matrix * project(Laplacian(), space(u_bar), space(u_bar)), 1),
+                        #opnorm(norm.(approx_DF⁻¹.sequence_tail, 1), 1))
+
+#Z₂ = opnorm_approxDF⁻¹Δ * 2 * (1 + model.β) 
+#ϵ_u = interval(inf(interval_of_existence(Y, Z₁, Z₂, Inf)))
