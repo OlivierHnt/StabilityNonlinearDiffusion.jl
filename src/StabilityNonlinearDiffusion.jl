@@ -22,22 +22,22 @@ C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
 
 #-
 
-# @kwdef struct SKT{T} # Shigesada-Kawasaki-Teramoto system
-#     # parameters of the diffusion
-#     d₁  :: T
-#     d₂  :: T
-#     d₁₁ :: T
-#     d₁₂ :: T
-#     d₂₁ :: T
-#     d₂₂ :: T
-#     # parameters of the reaction
-#     r₁  :: T
-#     r₂  :: T
-#     a₁  :: T
-#     b₁  :: T
-#     b₂  :: T
-#     a₂  :: T
-# end
+@kwdef struct SKT{T} # Shigesada-Kawasaki-Teramoto system
+    # parameters of the diffusion
+    d₁  :: T
+    d₂  :: T
+    d₁₁ :: T
+    d₁₂ :: T
+    d₂₁ :: T
+    d₂₂ :: T
+    # parameters of the reaction
+    r₁  :: T
+    r₂  :: T
+    a₁  :: T
+    b₁  :: T
+    b₂  :: T
+    a₂  :: T
+end
 
 # function Φ(model::SKT, u)
 #     u₁, u₂ = eachcomponent(u)
@@ -54,14 +54,16 @@ C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
 #     Φ′₂₂ = model.d₂ +  model.d₂₁ * u₁ + 2model.d₂₂ * u₂
 #     return [Φ′₁₁ Φ′₁₂ ; Φ′₂₁ Φ′₂₂]
 # end
-
+A(model::SKT, u) = [model.d₁ * u[1] + 2model.d₁₁ * u[1] + model.d₁₂ * u[2]      model.d₁₂ * u[1]
+                    model.d₂₁ * u[2]        model.d₂ + model.d₂₁ * u[1] + 2model.d₂₂ * u[2]]
 # function R(model::SKT, u)
 #     u₁, u₂ = eachcomponent(u)
 #     R₁ = (model.r₁ - model.a₁ * u₁ - model.b₁ * u₂) * u₁
 #     R₂ = (model.r₂ - model.b₂ * u₁ - model.a₂ * u₂) * u₂
 #     return [R₁, R₂]
 # end
-
+R(model::SKT, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
+                    (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
 # function R′(model::SKT, u)
 #     u₁, u₂ = eachcomponent(u)
 #     R′₁₁ = model.r₁ - 2model.a₁ * u₁ -  model.b₁ * u₂
@@ -71,7 +73,13 @@ C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
 #     return [R′₁₁ R′₁₂ ; R′₂₁ R′₂₂]
 # end
 
-#     export SKT
+C(model::SKT, u) = [model.r₁-2model.a₁*u[1]-model.b₁*u[2]               -model.b₁*u[1]
+                                -model.b₂*u[2]     model.r₂-model.b₂*u[1]-2model.a₂*u[2]]
+
+B(model::SKT, u) = [[zero(differentiate(u[2]))     zero(differentiate(u[1]))
+                    zero(differentiate(u[2]))      zero(differentiate(u[1]))]]
+
+    export SKT
 
 #-
 
@@ -156,6 +164,70 @@ end
     export F, DF
 
 #
+# Determinant and linear system for Matrix of Sequence Element 
+function det_Seq(A::Matrix{T}) where {T<:Any}
+    m, n = size(A)
+    @assert m == n "Matrix must be square to compute the determinant"
+    # Base case for 1x1 matrix
+    if m == 1
+        return A[1, 1]
+    end
+    # Recursive case for larger matrices
+    O = zero(A[1, 1])  # Zero element of type Sequence
+    determinant = O
+    for j in 1:n
+        # Compute the minor matrix by excluding the first row and column j
+        minor = A[2:end, [1:j-1; j+1:end]]
+        # Recursive call to det_Seq for the minor
+        cofactor = A[1, j] * det_Seq(minor)
+        # Alternate signs for cofactors
+        sign = (-1)^(1 + j)
+        determinant += sign * cofactor
+    end
+    return determinant
+end
+
+function gauss_jordan(A::Matrix{T}) where {T<:Any}
+    B = copy(A)  # Copy the input matrix to avoid modifying it
+    # check if matrix is singular
+    m, n = size(A)
+    if m == n
+        @assert sum(isnan.(inv(det_Seq(A)))) == 0 "Must insert a non-singular matrix"
+    else
+        @assert sum(isnan.(inv(det_Seq(A[1:m,1:m])))) == 0 "Must insert a non-singular matrix or a system matrix [A B]"
+    end
+    function swap_rows(i::T, nlinha::T) where {T<:Any}
+        for n ∈ (i+1):nlinha        # iterate over lines above to check if could be swap
+            if sum(isnan.(inv(B[n,i]))) == 0        # condition to swap row
+                L = copy(B[i,:])    # copy line to swap
+                B[i,:] = B[n,:]     # swap occur
+                B[n,:] = L
+                break
+            end
+        end
+    end
+    for i ∈ axes(A, 1)
+        if sum(isnan.(inv(B[i,i]))) > 0                         # check if need swap rows
+            swap_rows(i, m)
+        end
+        invBii = inv(B[i,i])
+        for k ∈ axes(A, 2)                    # iterate each column for each pivot line
+            B[i,k] = invBii * B[i,k]       # divide pivot element by pivot element
+        end
+        for j ∈ axes(A, 1)                          # iterate each line for each pivot column, except pivot line
+            Bji = B[j,i]
+            if j ≠ i
+                for k ∈ axes(A, 2)                                # jump pivot line
+                    B[j,k] = B[j,k] - Bji * B[i,k]
+                end  # apply gauss jordan in each line
+            end
+        end
+    end
+
+    return B
+end
+    export det_Seq, gauss_jordan
+
 
 struct ApproxInverse{T<:LinearOperator,S<:Sequence}
     finite_matrix :: T
@@ -183,10 +255,10 @@ function approx_inv(A)
         return inv.(A)
     elseif size(A) == (2, 2)
         # inv 2-by-2
-        detA = A[1,1] * A[2,2] - A[1,2] * A[2,1]
-        if detA == zero(A[1,1])
-            error("Matrix is singular")
-        end
+        detA = A[2,2]*A[1,1] - A[2,1]*A[1,2]
+        # if sum(isnai.(inv(detA))) > 0
+        #     error("Matrix is singular")
+        # end
         return project.([inv(detA)] .* [A[2,2] -A[1,2] ; -A[2,1] A[1,1]], space.(A))
     else
         error()
@@ -226,9 +298,13 @@ function solve_lyap(A)
         return inv.(2 .* A)
     elseif size(A) == (2, 2)
         # lyapunov 2-by-2
-        detA = RadiiPolynomial.LinearAlgebra.det(A)
-        trA = RadiiPolynomial.LinearAlgebra.tr(A)
+        detA = A[2,2]*A[1,1] - A[2,1]*A[1,2]
+        trA = sum(i -> A[i,i], 1:size(A,1))
         den = inv(2 * detA * trA)
+        print(den,"\n")
+        # if sum(isnai.(den)) > 0
+        #     error("Singular")
+        # end
         P₁_bar =  (detA + A[2,1]^2 + A[2,2]^2)        * den
         P₂_bar = -(A[1,1] * A[2,1] + A[1,2] * A[2,2]) * den
         P₃_bar =  (detA + A[1,1]^2 + A[1,2]^2)        * den
@@ -253,7 +329,7 @@ end
 #     end
 #     return mult_adj_Φ′ * Laplacian() + mult_adj_R′
 # end
-
+# To adapt with X space norm
 function C₀(P, opnorm_approxinvΔ, Z₂, ϵ_u; N, K)
     n = size(P.W_bar, 1)
     ω = frequency(space(P.W_bar[1]))
