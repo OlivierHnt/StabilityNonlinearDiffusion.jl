@@ -10,9 +10,9 @@ using RadiiPolynomial, GLMakie
     β :: T
 end
 
-R(model::ScalarExample, u) = [model.α * u[1] - model.β * u[1]^2 + Sequence(CosFourier(4, frequency(u[1])), [0.5, 1.5, 1, -0.5, 3])]
-
 A(::ScalarExample, u) = [2u[1];;]
+
+R(model::ScalarExample, u) = [model.α * u[1] - model.β * u[1]^2 + Sequence(CosFourier(4, frequency(u[1])), [0.5, 1.5, 1, -0.5, 3])]
 
 B(::ScalarExample, u) = [[zero(differentiate(u[1]));;]]
 
@@ -32,52 +32,27 @@ C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
     d₂₂ :: T
     # parameters of the reaction
     r₁  :: T
-    r₂  :: T
     a₁  :: T
     b₁  :: T
+    r₂  :: T
     b₂  :: T
     a₂  :: T
 end
 
-# function Φ(model::SKT, u)
-#     u₁, u₂ = eachcomponent(u)
-#     Φ₁ = (model.d₁ + model.d₁₁ * u₁ + model.d₁₂ * u₂) * u₁
-#     Φ₂ = (model.d₂ + model.d₂₁ * u₁ + model.d₂₂ * u₂) * u₂
-#     return [Φ₁, Φ₂] # Sequence(space(Φ₁) × space(Φ₂), [coefficients(Φ₁) ; coefficients(Φ₂)])
-# end
+A(model::SKT, u) = [model.d₁ + 2model.d₁₁ * u[1] + model.d₁₂ * u[2]                 model.d₁₂ * u[1]
+                                                   model.d₂₁ * u[2]     model.d₂ +  model.d₂₁ * u[1] + 2model.d₂₂ * u[2]]
 
-# function Φ′(model::SKT, u)
-#     u₁, u₂ = eachcomponent(u)
-#     Φ′₁₁ = model.d₁ + 2model.d₁₁ * u₁ +  model.d₁₂ * u₂
-#     Φ′₁₂ =                               model.d₁₂ * u₁
-#     Φ′₂₁ =             model.d₂₁ * u₂
-#     Φ′₂₂ = model.d₂ +  model.d₂₁ * u₁ + 2model.d₂₂ * u₂
-#     return [Φ′₁₁ Φ′₁₂ ; Φ′₂₁ Φ′₂₂]
-# end
-A(model::SKT, u) = [model.d₁ * u[1] + 2model.d₁₁ * u[1] + model.d₁₂ * u[2]      model.d₁₂ * u[1]
-                    model.d₂₁ * u[2]        model.d₂ + model.d₂₁ * u[1] + 2model.d₂₂ * u[2]]
-# function R(model::SKT, u)
-#     u₁, u₂ = eachcomponent(u)
-#     R₁ = (model.r₁ - model.a₁ * u₁ - model.b₁ * u₂) * u₁
-#     R₂ = (model.r₂ - model.b₂ * u₁ - model.a₂ * u₂) * u₂
-#     return [R₁, R₂]
-# end
 R(model::SKT, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
                     (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
-# function R′(model::SKT, u)
-#     u₁, u₂ = eachcomponent(u)
-#     R′₁₁ = model.r₁ - 2model.a₁ * u₁ -  model.b₁ * u₂
-#     R′₁₂ =                           -  model.b₁ * u₁
-#     R′₂₁ =          -  model.b₂ * u₂
-#     R′₂₂ = model.r₂ -  model.b₂ * u₁ - 2model.a₂ * u₂
-#     return [R′₁₁ R′₁₂ ; R′₂₁ R′₂₂]
-# end
 
-C(model::SKT, u) = [model.r₁-2model.a₁*u[1]-model.b₁*u[2]               -model.b₁*u[1]
-                                -model.b₂*u[2]     model.r₂-model.b₂*u[1]-2model.a₂*u[2]]
+B(::SKT, u) = [[zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))
+                zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))],
+               [zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))
+                zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))]]
 
-B(model::SKT, u) = [[zero(differentiate(u[2]))     zero(differentiate(u[1]))
-                    zero(differentiate(u[2]))      zero(differentiate(u[1]))]]
+
+C(model::SKT, u) = [model.r₁ - 2model.a₁ * u[1] - model.b₁ * u[2]               -model.b₁ * u[1]
+                                                 -model.b₂ * u[2]     model.r₂ - model.b₂ * u[1] - 2model.a₂ * u[2]]
 
     export SKT
 
@@ -101,14 +76,14 @@ end
 A(model::Porous, u) = [model.d₁₁ * u[1]     model.d₁₂ * u[1]
                        model.d₂₁ * u[2]     model.d₂₂ * u[2]]
 
-R(model::Porous, u) = [(model.r₁ + model.a₁ * u[1] + model.b₁ * u[2]) * u[1]
-                       (model.r₂ + model.b₂ * u[1] + model.a₂ * u[2]) * u[2]]
+R(model::Porous, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
+                       (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
 
 B(model::Porous, u) = [[ model.d₁₂ * differentiate(u[2])     -model.d₁₂ * differentiate(u[1])
                         -model.d₂₁ * differentiate(u[2])      model.d₂₁ * differentiate(u[1])]]
 
-C(model::Porous, u) = [model.r₁ + 2model.a₁ * u[1] + model.b₁ * u[2]                model.b₁ * u[1]
-                                                     model.b₂ * u[2]     model.r₂ + model.b₂ * u[1] + 2model.a₂ * u[2]]
+C(model::Porous, u) = [model.r₁ - 2model.a₁ * u[1] - model.b₁ * u[2]               -model.b₁ * u[1]
+                                                    -model.b₂ * u[2]     model.r₂ - model.b₂ * u[1] - 2model.a₂ * u[2]]
 
     export Porous
 
@@ -122,7 +97,7 @@ Base.getindex(::Gradient{1}, i)           = Derivative(1)
 Base.getindex(::Gradient{N}, i) where {N} = Derivative(ntuple(j -> ifelse(j == i, 1, 0), Val(N)))
 
 _nspaces(::BaseSpace) = 1
-_nspaces(s::TensorSpace{<:NTuple{N,BaseSpace}}) where {N} = N
+_nspaces(::TensorSpace{<:NTuple{N,BaseSpace}}) where {N} = N
 
 function F(model, u, s)
     _u_ = [component(u, i) for i ∈ 1:nspaces(s)]
@@ -164,7 +139,7 @@ end
     export F, DF
 
 #
-# Determinant and linear system for Matrix of Sequence Element 
+# Determinant and linear system for Matrix of Sequence Element
 function det_Seq(A::Matrix{T}) where {T<:Any}
     m, n = size(A)
     @assert m == n "Matrix must be square to compute the determinant"
