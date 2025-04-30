@@ -143,10 +143,11 @@ end
 function isinv(S::Sequence)
     # Check if a Sequence is invertible
     n_ech = 2*length(S) + 1
-    ω = frequency(space(S))
+    ω = inf(frequency(space(S))[1])
     tt = LinRange(0, π/ω, n_ech)
-    S_ = S.(tt)
-    return prod(@. S_ > 0) || prod(@. S_ < 0)
+    _S_ = [S(t)[1] for t in tt]
+    _S = inf.(_S_); S_ = sup.(_S_)
+    return prod(@. _S > 0) || prod(@. S_ < 0)
 end
 
 
@@ -241,7 +242,7 @@ end
 function approx_inv(A)
     if size(A) == (1, 1)
         # inv 1-by-1, i.e., scalar case
-        if !isinv.(A)
+        if !prod(isinv.(A))
             error("Matrix is singular")
         end
         return inv.(A)
@@ -287,7 +288,7 @@ end
 function solve_lyap(A)
     if size(A) == (1, 1)
         # lyapunov 1-by-1, i.e., scalar case
-        if !isinv.(A)
+        if !prod(isinv.(A))
             error("Singular")
         end
         return inv.(2 .* A)
