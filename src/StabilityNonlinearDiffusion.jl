@@ -139,7 +139,17 @@ end
     export F, DF
 
 #
-# Determinant and linear system for Matrix of Sequence Element
+# Determinant and linear system for Matrix of Sequence Element 
+function isinv(S::Sequence)
+    # Check if a Sequence is invertible
+    n_ech = 2*length(S) + 1
+    ω = frequency(space(S))
+    tt = LinRange(0, π/ω, n_ech)
+    S_ = S.(tt)
+    return prod(@. S_ > 0) || prod(@. S_ < 0)
+end
+
+
 function det_Seq(A::Matrix{T}) where {T<:Any}
     m, n = size(A)
     @assert m == n "Matrix must be square to compute the determinant"
@@ -147,9 +157,13 @@ function det_Seq(A::Matrix{T}) where {T<:Any}
     if m == 1
         return A[1, 1]
     end
+    if m == 2
+        # 2x2 matrix determinant
+        return A[1, 1] * A[2, 2] - A[1, 2] * A[2, 1]
+    end
     # Recursive case for larger matrices
-    O = zero(A[1, 1])  # Zero element of type Sequence
-    determinant = O
+    # Zero element of type Sequence
+    determinant = zero(A[1, 1])
     for j in 1:n
         # Compute the minor matrix by excluding the first row and column j
         minor = A[2:end, [1:j-1; j+1:end]]
@@ -167,13 +181,13 @@ function gauss_jordan(A::Matrix{T}) where {T<:Any}
     # check if matrix is singular
     m, n = size(A)
     if m == n
-        @assert sum(isnan.(inv(det_Seq(A)))) == 0 "Must insert a non-singular matrix"
+        @assert isinv(det_Seq(A)) "Must insert a non-singular matrix"
     else
-        @assert sum(isnan.(inv(det_Seq(A[1:m,1:m])))) == 0 "Must insert a non-singular matrix or a system matrix [A B]"
+        @assert isinv(det_Seq(A[1:m,1:m])) "Must insert a non-singular matrix or a system matrix [A B]"
     end
     function swap_rows(i::T, nlinha::T) where {T<:Any}
         for n ∈ (i+1):nlinha        # iterate over lines above to check if could be swap
-            if sum(isnan.(inv(B[n,i]))) == 0        # condition to swap row
+            if isinv(B[n,i])      # condition to swap row
                 L = copy(B[i,:])    # copy line to swap
                 B[i,:] = B[n,:]     # swap occur
                 B[n,:] = L
@@ -182,7 +196,7 @@ function gauss_jordan(A::Matrix{T}) where {T<:Any}
         end
     end
     for i ∈ axes(A, 1)
-        if sum(isnan.(inv(B[i,i]))) > 0                         # check if need swap rows
+        if !isinv(B[i,i])                      # check if need swap rows
             swap_rows(i, m)
         end
         invBii = inv(B[i,i])
@@ -201,7 +215,7 @@ function gauss_jordan(A::Matrix{T}) where {T<:Any}
 
     return B
 end
-    export det_Seq, gauss_jordan
+    export isinv, det_Seq, gauss_jordan
 
 
 struct ApproxInverse{T<:LinearOperator,S<:Sequence}
@@ -227,13 +241,16 @@ end
 function approx_inv(A)
     if size(A) == (1, 1)
         # inv 1-by-1, i.e., scalar case
+        if !isinv.(A)
+            error("Matrix is singular")
+        end
         return inv.(A)
     elseif size(A) == (2, 2)
         # inv 2-by-2
         detA = A[2,2]*A[1,1] - A[2,1]*A[1,2]
-        # if sum(isnai.(inv(detA))) > 0
-        #     error("Matrix is singular")
-        # end
+        if !isinv(detA)
+            error("Matrix is singular")
+        end
         return project.([inv(detA)] .* [A[2,2] -A[1,2] ; -A[2,1] A[1,1]], space.(A))
     else
         error()
@@ -270,16 +287,19 @@ end
 function solve_lyap(A)
     if size(A) == (1, 1)
         # lyapunov 1-by-1, i.e., scalar case
+        if !isinv.(A)
+            error("Singular")
+        end
         return inv.(2 .* A)
     elseif size(A) == (2, 2)
         # lyapunov 2-by-2
         detA = A[2,2]*A[1,1] - A[2,1]*A[1,2]
         trA = sum(i -> A[i,i], 1:size(A,1))
-        den = inv(2 * detA * trA)
-        print(den,"\n")
-        # if sum(isnai.(den)) > 0
-        #     error("Singular")
-        # end
+        den_ = detA*trA
+        if !isinv(den_)
+            error("Singular")
+        end
+        den = inv(2 * den_)
         P₁_bar =  (detA + A[2,1]^2 + A[2,2]^2)        * den
         P₂_bar = -(A[1,1] * A[2,1] + A[1,2] * A[2,2]) * den
         P₃_bar =  (detA + A[1,1]^2 + A[1,2]^2)        * den
