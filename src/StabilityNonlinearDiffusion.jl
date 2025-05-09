@@ -39,17 +39,31 @@ C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
     a₂  :: T
 end
 
+function B_SKT(u)
+    n = length(u)
+    d = _nspaces(space(u[1]))
+    if d > 1
+        E = I(d)
+        Tuples_E = [NTuple{d, Int64}(E[:,i]) for i ∈ 1:d]
+    else
+        Tuples_E = 1
+    end
+    e = fill(1, n)'
+    B = [ [zero(differentiate(u[j], Tuples_E[i])) for j ∈ 1:n]*e for i ∈ 1:d]
+    return B
+end
+
 A(model::SKT, u) = [model.d₁ + 2model.d₁₁ * u[1] + model.d₁₂ * u[2]                 model.d₁₂ * u[1]
                                                    model.d₂₁ * u[2]     model.d₂ +  model.d₂₁ * u[1] + 2model.d₂₂ * u[2]]
 
 R(model::SKT, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
                     (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
 
-B(::SKT, u) = [[zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))
-                zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))],
-               [zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))
-                zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))]]
-
+# B(::SKT, u) = [[zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))
+#                 zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))],
+#                [zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))
+#                 zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))]]
+B(model::SKT, u) = B_SKT(u)
 
 C(model::SKT, u) = [model.r₁ - 2model.a₁ * u[1] - model.b₁ * u[2]               -model.b₁ * u[1]
                                                  -model.b₂ * u[2]     model.r₂ - model.b₂ * u[1] - 2model.a₂ * u[2]]
