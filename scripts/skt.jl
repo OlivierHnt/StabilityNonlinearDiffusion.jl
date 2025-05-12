@@ -183,7 +183,9 @@ mid_model = SKT(;d₁ = d, d₂ = d, d₁₁ = 0., d₁₂ = 3., d₂₁ = 0.055
 r₁  = 5., a₁  = 3., b₁  = 1.,
 r₂  = 2., b₂  = 1., a₂  = 3.)
 
-K = length(u₁)-1
+K = 100
+u₁ = [u₁; fill(0, K-length(u₁)+1)]
+u₂ = [u₂; fill(0, K-length(u₂)+1)]
 
 u_guess = Sequence(CosFourier(K, mid(ω))^2, [u₁[1:K+1] ; u₂[1:K+1]])
 
@@ -246,7 +248,7 @@ Z₂ = opnorm_approxDF⁻¹Δ * (normA′ + normΔ⁻¹C′)
 # Stability #
 #-----------#
 
-N = 3K #need to be > 2K
+N = 4K #need to be > 2K
 
 # construct P
 D = Diagonal(repeat([1 ; fill(1/2, 2N)], 1))
