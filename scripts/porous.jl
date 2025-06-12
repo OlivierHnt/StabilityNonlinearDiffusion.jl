@@ -1,6 +1,6 @@
 using Revise
 using StabilityNonlinearDiffusion, RadiiPolynomial
-using GLMakie
+using GLMakie, CairoMakie, Polynomials
 
 
 
@@ -28,9 +28,9 @@ K = 40
 
 # some completely random data -- failure...
 
-u_guess = Sequence(CosFourier(K, mid(ω))^2, [[0.1 * (-1)^rand(Bool) * rand()/2.0^k for k = 0:K] ; [0.01 * (-1)^rand(Bool) * rand()/2.0^k for k = 0:K]])
+#u_guess = Sequence(CosFourier(K, mid(ω))^2, [[0.1 * (-1)^rand(Bool) * rand()/2.0^k for k = 0:K] ; [0.01 * (-1)^rand(Bool) * rand()/2.0^k for k = 0:K]])
 
-u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
+#u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
 
 # using Antoine's data
 
@@ -105,18 +105,18 @@ lines!(ax2, LinRange(0, 1, length(u₁_grid)), t -> u2_approx_cos(t); linewidth 
 scatter!(ax2, Point2f.(LinRange(0, 1, length(u₂_grid)), u₂_grid))
 
 ##
-t = time()
-K = 100#3600
+
+N = 100
 # u1 = Sequence(CosFourier(K, mid(ω)), [real(u1_approx.coefficients[i]) for i = 1:2:2K+1])
 # u2 = Sequence(CosFourier(K, mid(ω)), [real(u2_approx.coefficients[i]) for i = 1:2:2K+1])
 
 # u1_cos = Sequence(CosFourier(K, mid(ω)), u1_approx_cos.coefficients[1:K+1])
 # u2_cos = Sequence(CosFourier(K, mid(ω)), u2_approx_cos.coefficients[1:K+1])
-u1_cos = Sequence(CosFourier(K, mid(ω)), u1_approx_cos.coefficients[1:K+1] .* [1 ; fill(0.5, K)])
-u2_cos = Sequence(CosFourier(K, mid(ω)), u2_approx_cos.coefficients[1:K+1] .* [1 ; fill(0.5, K)])
+u1_cos = Sequence(CosFourier(N, mid(ω)), u1_approx_cos.coefficients[1:N+1] .* [1 ; fill(0.5, N)])
+u2_cos = Sequence(CosFourier(N, mid(ω)), u2_approx_cos.coefficients[1:N+1] .* [1 ; fill(0.5, N)])
 
 # u_guess = Sequence(CosFourier(K, mid(ω))^2, [u1.coefficients ; u2.coefficients])
-u_guess_cos = Sequence(CosFourier(K, mid(ω))^2, [u1_cos.coefficients ; u2_cos.coefficients])
+u_guess_cos = Sequence(CosFourier(N, mid(ω))^2, [u1_cos.coefficients ; u2_cos.coefficients])
 
 # u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
 u_approx_cos, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess_cos)
@@ -137,52 +137,63 @@ u_approx_cos, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space
 # Proof #
 #-------#
 
+K = 30#3600
+
 #component(u_approx_cos, 1)[1:2:end] .= 0
 #component(u_approx_cos, 2)[1:2:end] .= 0
-
-u_bar = Sequence(CosFourier(K, ω)^2, interval(coefficients(u_approx_cos)))
+CFK = CosFourier(K, ω)^2
+CFK2 = CosFourier(2K, ω)^2
+CFK3 = CosFourier(3K, ω)^2
+CFK4 = CosFourier(4K, ω)^2
+coeff_u_bar = coefficients(project(u_approx_cos, CosFourier(K, mid(ω))^2))
+u_bar = Sequence(CFK, interval(
+        coeff_u_bar)
+        )
 
 # construct approx inverse
 
 A_bar = StabilityNonlinearDiffusion.A(model, [component(u_bar, 1), component(u_bar, 2)])
-L_bar = DF(model, u_bar, CosFourier(3K, ω)^2, CosFourier(4K, ω)^2)
-L_bar_small = project(L_bar, CosFourier(2K, ω)^2, CosFourier(3K, ω)^2)
+L_bar = DF(model, u_bar, CFK3, CFK4)
+L_bar_small = project(L_bar, CFK2, CFK3)
 
-approx_DF⁻¹ = ApproxInverse(
-    project(inv(project(mid.(L_bar), CosFourier(3K, ω)^2, CosFourier(3K, ω)^2)), CosFourier(2K, ω)^2, CosFourier(2K, ω)^2),
-    approx_inv(A_bar))
 
+θ = approx_inv(A_bar)
+approx_finit_inv = inv(project(mid.(L_bar), CFK3, CFK3))
+approx_DF⁻¹ = ApproxInverse(project(approx_finit_inv, CFK2, CFK2), θ)
+
+# θΔ⁻¹_N∞ = project(approx_DF⁻¹, CFK3, CFK2) - approx_DF⁻¹.finite_matrix
+# approx_DF⁻¹_bis = ApproxInverse( (I - θΔ⁻¹_N∞*L_bar_small)*approx_DF⁻¹.finite_matrix, θ)
 #
 
-F_bar = F(model, u_bar, CosFourier(2K, ω)^2)
+F_bar = F(model, u_bar, CFK2)
 
 ν = 1.001
 X = Ell1(GeometricWeight(ν))
 X² = NormedCartesianSpace(X, Ell1())
 
-Y = norm(project(approx_DF⁻¹, space(F_bar), CosFourier(3K, ω)^2) * F_bar, X²)
+Y = norm(project(approx_DF⁻¹, space(F_bar), CFK3) * F_bar, X²)
 
 C_bar = StabilityNonlinearDiffusion.C(model, [component(u_bar, 1),component(u_bar, 2)])
 B_bar = StabilityNonlinearDiffusion.B(model, [component(u_bar, 1),component(u_bar, 2)])
-normθ = opnorm(norm.(approx_DF⁻¹.sequence_tail, [X]), 1)
+normθ = opnorm(norm.(θ, [X]), 1)
 
-Z₁_a = opnorm(I - project(approx_DF⁻¹, CosFourier(3K, ω)^2, CosFourier(4K, ω)^2) * L_bar_small, X²)
-Z₁_b1 = opnorm(norm.([1. 0. ; 0. 1.] - approx_DF⁻¹.sequence_tail * A_bar, [X]), 1)
+Z₁_a = opnorm(I - project(approx_DF⁻¹, CFK3, CFK4) * L_bar_small, X²)
+# Z₁_a_bis = opnorm(I - project(approx_DF⁻¹_bis, CFK3, CFK4) * L_bar_small, X²)
+Z₁_b1 = opnorm(norm.([1. 0. ; 0. 1.] - θ * A_bar, [X]), 1)
 Z₁_b2 = inv((2*K + 1) * ω) * normθ * opnorm(norm.(B_bar[1], [X]), 1)
 Z₁_b3 = inv((2*K + 1) * ω)^2 * normθ * opnorm(norm.(C_bar, [X]), 1)
 
 Z₁ = max(Z₁_a, Z₁_b1 + Z₁_b2 + Z₁_b3)
 
 #
-spy(abs.(mid.(coefficients(project(approx_DF⁻¹, domain(L_bar_small), CosFourier(3K, ω)^2)))))
-spy(abs.(mid.(coefficients(I - project(approx_DF⁻¹, domain(L_bar_small), CosFourier(3K, ω)^2) * L_bar))))
-spy(abs.(mid.(coefficients(L_bar))))
+# spy(abs.(mid.(coefficients(project(approx_DF⁻¹, domain(L_bar_small), CFK3)))))
+# spy(abs.(mid.(coefficients(I - project(approx_DF⁻¹, domain(L_bar_small), CFK3) * L_bar))))
+# spy(abs.(mid.(coefficients(L_bar))))
 
-opnorm_approxDF⁻¹Δ = max(opnorm(approx_DF⁻¹.finite_matrix * project(Laplacian(), CosFourier(2K,ω)^2, CosFourier(2K,ω)^2), X²), normθ)
+opnorm_approxDF⁻¹Δ = max(opnorm(approx_DF⁻¹.finite_matrix * project(Laplacian(),CFK2, CFK2), X²), normθ)
 
 normA′ = 2 * maximum(abs.([model.d₁₁, model.d₁₂, model.d₂₁, model.d₂₂]))
 norm∇⁻¹B′ = abs(model.d₁₂) + abs(model.d₂₁)
 normΔ⁻¹C′ = maximum([2*abs(model.a₁), 2*abs(model.a₂), abs(model.b₁)+ abs(model.b₂)])
 Z₂ = opnorm_approxDF⁻¹Δ * (normA′ + norm∇⁻¹B′ + normΔ⁻¹C′)
 ϵ_u = interval(inf(interval_of_existence(Y, Z₁, Z₂, Inf)))
-time() - t

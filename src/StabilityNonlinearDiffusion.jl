@@ -1,7 +1,7 @@
 module StabilityNonlinearDiffusion
 
-using RadiiPolynomial, GLMakie
-
+using RadiiPolynomial
+using LinearAlgebra
 # models
 
 @kwdef struct ScalarExample{T}
@@ -52,7 +52,7 @@ function B_SKT(u)
     B = [ [zero(differentiate(u[j], Tuples_E[i])) for j ∈ 1:n]*e for i ∈ 1:d]
     return B
 end
-
+export B_SKT
 A(model::SKT, u) = [model.d₁ + 2model.d₁₁ * u[1] + model.d₁₂ * u[2]                 model.d₁₂ * u[1]
                                                    model.d₂₁ * u[2]     model.d₂ +  model.d₂₁ * u[1] + 2model.d₂₂ * u[2]]
 
@@ -161,6 +161,16 @@ function isinv(S::Sequence)
     tt = LinRange(0, π/ω, n_ech)
     _S_ = [S(t)[1] for t in tt]
     _S = inf.(_S_); S_ = sup.(_S_)
+    return prod(@. _S > 0) || prod(@. S_ < 0)
+end
+
+function isinv(S::ValidatedSequence)
+    # Check if a Sequence is invertible
+    n_ech = 2*length(S) + 1
+    ω = inf(frequency(space(S))[1])
+    tt = LinRange(0, π/ω, n_ech)
+    _S_ = [S.sequence(t)[1] for t in tt]
+    _S = inf.(_S_) .- sup(S.sequence_error); S_ = sup.(_S_) .+ sup(S.sequence_error)
     return prod(@. _S > 0) || prod(@. S_ < 0)
 end
 
@@ -299,7 +309,26 @@ function RadiiPolynomial.project(A::OperatorP, dom, codom)
     return V
 end
 
-function solve_lyap(A)
+struct NewOperatorP{T<:LinearOperator,S<:Sequence}
+    P_finite :: T
+    W_bar    :: Matrix{S}
+end
+
+function RadiiPolynomial.project(A::NewOperatorP, dom, codom)
+    #
+    #D = Diagonal(repeat([1; fill(1/2, dom[1].space.order)]))
+    #Γ = LinearOperator(dom[1], dom[1], D)
+    V = zeros(eltype(A.W_bar[1,1]), dom, codom)
+    for j ∈ 1:nspaces(dom), i ∈ 1:nspaces(codom)
+        #mul!(component(V, i, j), Multiplication(A.W_bar[i,j]), Γ)
+        project!(component(V, i, j), Multiplication(A.W_bar[i,j]))
+        _tmp_ = component(A.P_finite, i, j)
+        component(V, i, j)[indices(codomain(_tmp_)),indices(domain(_tmp_))] .= _tmp_
+    end
+    return V
+end
+
+function solve_lyap(A, in_size = false)
     if size(A) == (1, 1)
         # lyapunov 1-by-1, i.e., scalar case
         if !prod(isinv.(A))
@@ -308,91 +337,197 @@ function solve_lyap(A)
         return inv.(2 .* A)
     elseif size(A) == (2, 2)
         # lyapunov 2-by-2
-        detA = A[2,2]*A[1,1] - A[2,1]*A[1,2]
         trA = sum(i -> A[i,i], 1:size(A,1))
-        den_ = detA*trA
+        if in_size
+            detA = A[2,2]*̄A[1,1] - A[2,1]*̄A[1,2]
+            den_ = detA*̄trA
+        else
+            detA = A[2,2]*A[1,1] - A[2,1]*A[1,2]
+            den_ = detA*trA
+        end
         if !isinv(den_)
             error("Singular")
         end
-        den = inv(2 * den_)
-        P₁_bar =  (detA + A[2,1]^2 + A[2,2]^2)        * den
-        P₂_bar = -(A[1,1] * A[2,1] + A[1,2] * A[2,2]) * den
-        P₃_bar =  (detA + A[1,1]^2 + A[1,2]^2)        * den
+        if in_size
+            den = inv(2 * den_)
+            P₁_bar =  (detA + A[2,1]^̄2 + A[2,2]^̄2)        *̄ den
+            P₂_bar = -(A[1,1] *̄ A[2,1] + A[1,2] *̄ A[2,2]) *̄ den
+            P₃_bar =  (detA + A[1,1]^̄2 + A[1,2]^̄2)        *̄ den
+        else
+            den = inv(2 * den_)
+            P₁_bar =  (detA + A[2,1]^2 + A[2,2]^2)        * den
+            P₂_bar = -(A[1,1] * A[2,1] + A[1,2] * A[2,2]) * den
+            P₃_bar =  (detA + A[1,1]^2 + A[1,2]^2)        * den
+        end
         return [P₁_bar P₂_bar ; P₂_bar P₃_bar]
     else # In literature we can find algorithm for lyapunov n-by-n
         error()
     end
 end
 
-    export OperatorP, solve_lyap
+Base.:+(A::NewOperatorP, B::NewOperatorP) = NewOperatorP(A.P_finite + B.P_finite, A.W_bar + B.W_bar)
+Base.:-(A::NewOperatorP, B::NewOperatorP) = NewOperatorP(A.P_finite-B.P_finite, A.W_bar-B.W_bar)
+Base.:*(x::Real, A::NewOperatorP) = NewOperatorP(x*A.P_finite, x*A.W_bar)
+Base.zero(A::NewOperatorP) = NewOperatorP(zero(A.P_finite), zero.(A.W_bar))
+Base.adjoint(A::NewOperatorP) = NewOperatorP(adjoint(A.P_finite), A.W_bar)
+function Base.:*(A::NewOperatorP, B::NewOperatorP)
+    space_B = domain(B.P_finite)
+    band_B =  space(B.W_bar[1,1])^size(B.W_bar)[1]
+    space_A = codomain(A.P_finite)
+    band_A =  space(A.W_bar[1,1])^size(A.W_bar)[1]
+    if order(space_A.space) >= order(space_B.space)
+        Pf = project(A, space_A ⊕ band_A, space_A) * project(B, space_A, space_A  ⊕ band_B)
+    else
+        Pf = project(A, space_B ⊕ band_A, space_B) * project(B, space_B , space_B ⊕ band_B)
+    end
+    Pb = A.W_bar*B.W_bar
+    return NewOperatorP(Pf, Pb)
+end
+function RadiiPolynomial.:*̄(A::NewOperatorP, B::NewOperatorP)
+    Pf = project(A, codomain(B.P_finite), codomain(A.P_finite)) * project(B, domain(B.P_finite), codomain(B.P_finite))
+    Pb = project.(A.W_bar*B.W_bar, space.(A.W_bar))
+    return NewOperatorP(Pf, Pb)
+end
 
-#
+    export NewOperatorP, OperatorP, solve_lyap
 
-# function adj_DF(model, u, dom, codom)
-#     _adj_Φ′_ = adjoint(Φ′(model, u))
-#     _adj_R′_ = adjoint(R′(model, u))
-#     mult_adj_Φ′ = zeros(eltype(eltype(_adj_Φ′_)), dom, codom)
-#     mult_adj_R′ = zeros(eltype(eltype(_adj_R′_)), dom, codom)
-#     for j = 1:nspaces(dom), i = 1:nspaces(codom)
-#         project!(component(mult_adj_Φ′, i, j), Multiplication(_adj_Φ′_[i,j]))
-#         project!(component(mult_adj_R′, i, j), Multiplication(_adj_R′_[i,j]))
-#     end
-#     return mult_adj_Φ′ * Laplacian() + mult_adj_R′
+function q₀(A_bar, B_bar, C_bar, W_bar)
+    Δ = Laplacian()
+    d = _nspaces(space(W_bar[1]))
+    ∇ = Gradient{d}()
+    q = zero(A_bar)
+    q = - (W_bar * ([Δ] .* A_bar) + W_bar .* sum(l -> [∇[l]].*B_bar[l], 1:d) + W_bar * C_bar + permutedims(A_bar) * ([Δ] .* W_bar) - sum(l -> permutedims(B_bar)[l].*([∇[l]].*W_bar), 1:d) + permutedims(C_bar) * W_bar)
+    return q
+end
+
+function q₁(A_bar, B_bar, W_bar)
+    d = _nspaces(space(W_bar[1]))
+    ∇ = Gradient{d}()
+    q = zero(B_bar)
+    for l ∈ 1:d
+        q[l] = -(W_bar * ([∇[l]] .* (2A_bar) + B_bar[l]) + (permutedims(2A_bar) * ([∇[l]] .* W_bar)) - permutedims(B_bar)[l] .* W_bar)
+    end
+    return q
+end
+
+function q₂(A_bar, W_bar)
+    return - (W_bar * A_bar + permutedims(A_bar) * W_bar)
+end
+
+    export q₀, q₁, q₂
+
+
+ function gershgorin(A)
+    # Compute the Gershgorin disks for a given matrix A
+    n = size(A, 1)
+    disks = zeros(eltype(A),n,2)
+    for i in 1:n
+        disks[i,2] = sum(abs.(A[i, :])) - abs(A[i, i])
+        disks[i,1] = A[i, i]
+    end
+    return disks
+end
+    export gershgorin
+
+# function C₀(P, opnorm_approxinvΔ, Z₂, ϵ_u; N, K)
+#     n = size(P.W_bar, 1)
+#     ω = frequency(space(P.W_bar[1]))
+#     M = N+K
+#     Δ = Laplacian()
+#     d = _nspaces(space(P.W_bar[1]))
+#     ∇ = Gradient{d}()
+#     PΔ = project(P, CosFourier.(M, ω) ^ n, CosFourier.(M+K, ω) ^ n) * project(Δ, CosFourier.(M, ω) ^ n, CosFourier.(M, ω) ^ n)
+#     #
+#     x = opnorm(norm.(P.W_bar, 1), 1)
+#     y = inv(ω*(M-K+1))^2 * opnorm(norm.([Δ] .* P.W_bar, 1), 1)
+#     z = inv(ω*(M-K+1)) * sum(l -> opnorm(norm.([∇[l]] .* P.W_bar, 1), 1), 1:d)
+# 	return 2max(opnorm(PΔ, 1), x + y / 2 + z) * Z₂ / opnorm_approxinvΔ * ϵ_u
 # end
-# To adapt with X space norm
-function C₀(P, opnorm_approxinvΔ, Z₂, ϵ_u; N, K)
-    n = size(P.W_bar, 1)
-    ω = frequency(space(P.W_bar[1]))
-    M = N+K
-    Δ = Laplacian()
-    d = _nspaces(space(P.W_bar[1]))
-    ∇ = Gradient{d}()
-    PΔ = project(P, CosFourier.(M, ω) ^ n, CosFourier.(M+K, ω) ^ n) * project(Δ, CosFourier.(M, ω) ^ n, CosFourier.(M, ω) ^ n)
-    #
-    x = opnorm(norm.(P.W_bar, 1), 1)
-    y = inv(ω*(M-K+1))^2 * opnorm(norm.([Δ] .* P.W_bar, 1), 1)
-    z = inv(ω*(M-K+1)) * sum(l -> opnorm(norm.([∇[l]] .* P.W_bar, 1), 1), 1:d)
-	return 2max(opnorm(PΔ, 1), x + y / 2 + z) * Z₂ / opnorm_approxinvΔ * ϵ_u
+
+# function C₁(W_bar, A_bar; N, K)
+#     M = N+K
+#     Δ = Laplacian()
+#     d = _nspaces(space(W_bar[1]))
+#     ω = frequency(space(W_bar[1]))
+#     ∇ = Gradient{d}()
+#     #
+#     x = inv(ω*(M-2K+1))^2 * opnorm(norm.(([Δ] .* W_bar) * A_bar, 1), 1) +
+#         inv(ω*(M+1))^2    * opnorm(norm.(([Δ] .* W_bar) * A_bar, 1), Inf)
+#     y = inv(ω*(M-2K+1)) * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, 1), 1), 1:d)
+#     z = inv(ω*(M+1))    * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, 1), Inf), 1:d)
+# 	return x / 2 + y + z
+# end
+
+# function C₂(W_bar, B_bar; N, K)
+#     M = N+K
+#     d = _nspaces(space(W_bar[1]))
+#     ω = frequency(space(W_bar[1]))
+#     ∇ = Gradient{d}()
+#     #
+#     x = sum(l -> inv(ω*(M-K+1)) * (opnorm(norm.(B_bar[l], 1), 1) + opnorm(norm.(B_bar[l], 1), Inf)), 1:d) * opnorm(norm.(W_bar, 1), 1)
+#     y = sum(l -> inv(ω*(M-2K+1)) * opnorm(norm.(W_bar * B_bar[l], 1), 1) + inv(ω*(M+1)) * opnorm(norm.(W_bar * B_bar[l], 1), Inf), 1:d)
+#     z = sum(l -> inv(ω*(M-2K+1))^2 * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], 1), 1) + inv(ω*(M+1))^2 * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], 1), Inf), 1:d)
+#     return (x + y + z) / 2
+# end
+
+# function C₃(W_bar, C_bar; N, K)
+#     M = N+K
+#     ω = frequency(space(W_bar[1]))
+#     #
+#     x = inv(ω*(M-K+1))^2  * (opnorm(norm.(C_bar, 1), 1) + opnorm(norm.(C_bar, 1), Inf)) * opnorm(norm.(W_bar, 1), 1)
+#     y = inv(ω*(M-2K+1))^2 * opnorm(norm.(W_bar * C_bar, 1), 1) +
+#         inv(ω*(M+1))^2    * opnorm(norm.(W_bar * C_bar, 1), Inf)
+#     return (x + y) / 2
+# end
+
+#     export C₀, C₁, C₂, C₃
+
+function ⊕(F::BaseSpace, G::BaseSpace)
+    if typeof(F) != typeof(G)
+        error("Spaces must be of the same type")
+    end
+    # if frequency(F) != frequency(G)
+    #     error("Spaces must have the same frequency")
+    # end
+    H = typeof(F)(order(F)+order(G), frequency(G))
+    return H
 end
 
-function C₁(W_bar, A_bar; N, K)
-    M = N+K
-    Δ = Laplacian()
-    d = _nspaces(space(W_bar[1]))
-    ω = frequency(space(W_bar[1]))
-    ∇ = Gradient{d}()
-    #
-    x = inv(ω*(M-2K+1))^2 * opnorm(norm.(([Δ] .* W_bar) * A_bar, 1), 1) +
-        inv(ω*(M+1))^2    * opnorm(norm.(([Δ] .* W_bar) * A_bar, 1), Inf)
-    y = inv(ω*(M-2K+1)) * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, 1), 1), 1:d)
-    z = inv(ω*(M+1))    * sum(l -> opnorm(norm.(([∇[l]] .* W_bar) * A_bar, 1), Inf), 1:d)
-	return x / 2 + y + z
+function ⊕(F::CartesianPower, G::CartesianPower)
+    if F.n != G.n
+        error("Spaces must have the same power")
+    end
+    H = (F.space ⊕ G.space)^F.n
+    return H
 end
 
-function C₂(W_bar, B_bar; N, K)
-    M = N+K
-    d = _nspaces(space(W_bar[1]))
-    ω = frequency(space(W_bar[1]))
-    ∇ = Gradient{d}()
-    #
-    x = sum(l -> inv(ω*(M-K+1)) * (opnorm(norm.(B_bar[l], 1), 1) + opnorm(norm.(B_bar[l], 1), Inf)), 1:d) * opnorm(norm.(W_bar, 1), 1)
-    y = sum(l -> inv(ω*(M-2K+1)) * opnorm(norm.(W_bar * B_bar[l], 1), 1) + inv(ω*(M+1)) * opnorm(norm.(W_bar * B_bar[l], 1), Inf), 1:d)
-    z = sum(l -> inv(ω*(M-2K+1))^2 * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], 1), 1) + inv(ω*(M+1))^2 * opnorm(norm.(([∇[l]] .* W_bar) * B_bar[l], 1), Inf), 1:d)
-    return (x + y + z) / 2
+function ⊖(F::BaseSpace, G::BaseSpace)
+    if typeof(F) != typeof(G)
+        error("Spaces must be of the same type")
+    end
+    # if frequency(F) != frequency(G)
+    #     error("Spaces must have the same frequency")
+    # end
+    H = typeof(F)(order(F)-order(G), frequency(G))
+    return H
+end
+function ⊖(F::CartesianPower, G::CartesianPower)
+    if F.n != G.n
+        error("Spaces must have the same power")
+    end
+    H = (F.space ⊖ G.space)^F.n
+    return H
 end
 
-function C₃(W_bar, C_bar; N, K)
-    M = N+K
-    ω = frequency(space(W_bar[1]))
-    #
-    x = inv(ω*(M-K+1))^2  * (opnorm(norm.(C_bar, 1), 1) + opnorm(norm.(C_bar, 1), Inf)) * opnorm(norm.(W_bar, 1), 1)
-    y = inv(ω*(M-2K+1))^2 * opnorm(norm.(W_bar * C_bar, 1), 1) +
-        inv(ω*(M+1))^2    * opnorm(norm.(W_bar * C_bar, 1), Inf)
-    return (x + y) / 2
+export ⊕, ⊖
+
+function LinearAlgebra.I(M::Matrix{T}) where {T<:Sequence}
+    return zero(M) + I(size(M)[1])
 end
 
-    export C₀, C₁, C₂, C₃
-
+function LinearAlgebra.I(M::NewOperatorP)
+    return NewOperatorP(I(M.P_finite), I(M.W_bar))
+end
 
 
 end
