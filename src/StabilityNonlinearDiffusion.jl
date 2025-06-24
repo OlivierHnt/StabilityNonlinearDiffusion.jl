@@ -396,7 +396,7 @@ function q₀(A_bar, B_bar, C_bar, W_bar)
     d = _nspaces(space(W_bar[1]))
     ∇ = Gradient{d}()
     q = zero(A_bar)
-    q = - (W_bar * ([Δ] .* A_bar) + W_bar .* sum(l -> [∇[l]].*B_bar[l], 1:d) + W_bar * C_bar + permutedims(A_bar) * ([Δ] .* W_bar) - sum(l -> permutedims(B_bar)[l].*([∇[l]].*W_bar), 1:d) + permutedims(C_bar) * W_bar)
+    q = - (W_bar * ([Δ] .* A_bar) + W_bar * sum(l -> [∇[l]].*B_bar[l], 1:d) + W_bar * C_bar + permutedims(A_bar) * ([Δ] .* W_bar) - sum(l -> permutedims(B_bar[l]).*([∇[l]].*W_bar), 1:d) + permutedims(C_bar) * W_bar)
     return q
 end
 
@@ -419,10 +419,10 @@ end
 
  function gershgorin(A)
     # Compute the Gershgorin disks for a given matrix A
-    n = size(A, 1)
+    n,m = size(A)
     disks = zeros(eltype(A),n,2)
     for i in 1:n
-        disks[i,2] = sum(abs.(A[i, :])) - abs(A[i, i])
+        disks[i,2] = sum(abs.(A[i, vcat(1:i-1, i+1:m)]))# - abs(A[i, i])
         disks[i,1] = A[i, i]
     end
     return disks

@@ -1,6 +1,7 @@
 using Revise
 using RadiiPolynomial, LinearAlgebra, StabilityNonlinearDiffusion
-using GLMakie, CairoMakie, MAT
+using GLMakie, MAT 
+using CairoMakie
 
 
 
@@ -45,6 +46,15 @@ u_guess = Sequence(CosFourier(K, mid(ω))^2, [u₁[1:K+1] ; u₂[1:K+1]])
 
 u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
 
+fig = Figure()
+ax = Axis(fig[1,1], aspect = AxisAspect(2))
+lines!(ax, LinRange(0, 1, 100), x -> component(u_approx,1)(x); linewidth = 2, color = :green, linestyle = :solid)
+lines!(ax, LinRange(0, 1, 100), x -> component(u_approx,2)(x); linewidth = 2, color = :blue, linestyle = :dash)
+xlims!(0,1)
+ylims!(0,2)
+display(fig)
+save("fig/skt_solution.eps",fig)
+
 
 
 #-------#
@@ -84,10 +94,6 @@ Z₁_b3 = inv((2*K + 1) * ω)^2 * norm_w * opnorm(norm.(C_bar, [X]), 1)
 
 Z₁ = max(Z₁_a, Z₁_b1 + Z₁_b3)
 
-#
-# spy(abs.(mid.(coefficients(project(approx_DF⁻¹, domain(L_bar_small), CosFourier(3K, ω)^2)))))
-# spy(abs.(mid.(coefficients(I - project(approx_DF⁻¹, domain(L_bar_small), CosFourier(3K, ω)^2) * L_bar))))
-# spy(abs.(mid.(coefficients(L_bar))))
 
 opnorm_approxDF⁻¹Δ = max(opnorm(approx_DF⁻¹.finite_matrix * project(Laplacian(), CosFourier(2K,ω)^2, CosFourier(2K,ω)^2), X²), norm_w)
 
@@ -105,50 +111,110 @@ Z₂ = opnorm_approxDF⁻¹Δ * (normA′ + normΔ⁻¹C′)
 
 N = 120
 
-# construct P with Lyapunov equations
-L = DF(model, u_bar, CosFourier(2N, ω)^2, CosFourier(2N, ω)^2)
-Δ = project(Laplacian(), CosFourier(2N, ω)^2, CosFourier(2N, ω)^2)
-component(Δ,1,1)[0,0] += -1
-component(Δ,2,2)[0,0] += -1
-
 g = project(I, CosFourier(0, ω)^2, CosFourier(0, ω)^2)
 g_bar = 0.5*I([Sequence(CosFourier(0,ω), [1]);;].*I(2))
 Γ_op = NewOperatorP(g, g_bar)
 invΓ_op = NewOperatorP(g, 4*g_bar)
 null_op = LinearOperator( EmptySpace()^2, EmptySpace()^2, [;;])
 
-
-Γ = project(Γ_op, CosFourier(2N, ω)^2, CosFourier(2N, ω)^2)
-Γ⁻¹ = project(invΓ_op, CosFourier(2N, ω)^2, CosFourier(2N, ω)^2)
-#Δ_max = (ω*2N)^2
-
-
-P_finite_2N = Γ * LinearOperator(CosFourier(2N, ω)^2, CosFourier(2N, ω)^2, Symmetric(lyap(adjoint(mid.(coefficients(L))), -mid.(coefficients(Γ⁻¹*Δ)))))
-P_finite = project(P_finite_2N, CosFourier(N, ω)^2, CosFourier(N, ω)^2)
-
-# Xcos = Γ⁻¹ * P_finite_2N; Xcos * L + adjoint(L) * Xcos
-# P_finite_2N * L + Γ * adjoint(L) * Γ⁻¹ * P_finite_2N
-
+# construct P with Lyapunov equations
 P_bar = solve_lyap(A_bar, true)
 isinv(det_Seq(P_bar))
-#lines(LinRange(0, 1, 201),  x -> mid(P_bar[1](x)), color = :red)
-M = N+K # this is assumed everywhere
-L_ext = DF(model, u_bar, CosFourier(M+2K, ω)^2, CosFourier(M+2K, ω)^2)
-P_ext = project(NewOperatorP(P_finite, P_bar), CosFourier(M+2K, ω)^2, CosFourier(M+2K, ω)^2)
 
+## Build of Q̂
+# order 0 terms
+q₀_bar = q₀(A_bar, B_bar, C_bar, P_bar)
+c1_q₀ = q₀_bar[1,1][0]
+c2_q₀ = q₀_bar[2,2][0]
+n1_q₀ = 2*(sum(abs.(q₀_bar[1,1][1:end])) + sum(abs.(q₀_bar[1,2])))
+n2_q₀ = 2*(sum(abs.(q₀_bar[2,2][1:end])) + sum(abs.(q₀_bar[2,1])))
 
-Γ = project(Γ_op, CosFourier(M+2K, ω)^2, CosFourier(M+2K, ω)^2)
-Γ⁻¹ = project(invΓ_op, CosFourier(M+2K, ω)^2, CosFourier(M+2K, ω)^2)
+# order 1 terms
+q₁_bar = q₁(A_bar, B_bar, P_bar)
+c1_q₁ = q₁_bar[1][1,1][1]
+c2_q₁ = q₁_bar[1][2,2][1]
+n1_q₁ = 2*(sum(abs.(q₁_bar[1][1,1][2:end])) + sum(abs.(q₁_bar[1][1,2])))
+n2_q₁ = 2*(sum(abs.(q₁_bar[1][2,2][2:end])) + sum(abs.(q₁_bar[1][2,1])))
 
+# order 2 terms
+q₂_bar = q₂(A_bar, P_bar)
+# norm( norm.(q₂_bar + 1.0*I(2), 1), 1) # should be small
+c1_q₂ = q₂_bar[1,1][0]
+c2_q₂ = q₂_bar[2,2][0]
+n1_q₂ = 2*(sum(abs.(q₂_bar[1,1][1:end])) + sum(abs.(q₂_bar[1,2])))
+n2_q₂ = 2*(sum(abs.(q₂_bar[2,2][1:end])) + sum(abs.(q₂_bar[2,1])))
 
-E,V = eigen(mid.(coefficients(P_ext)))
-μ₀ = E[1]*0.5
+## Find index of truncation !
+d11 = (c1_q₁^2 + 4*c1_q₀*c1_q₂)
+if inf(d11) > 0
+       k11  =max((c1_q₁ + sqrt(d11))/(2*c1_q₂*ω),(c1_q₁ - sqrt(d11))/(2*c1_q₂*ω))
+else
+       k11 = 0
+end
+epsilon1 = 0.4 #...
+d12 = (c1_q₁^2 + 4*epsilon1*c1_q₀*c1_q₂)
+if inf(d12) > 0
+       k12 = max(-(c1_q₁ + sqrt(d12))/(c1_q₂*ω),-(c1_q₁ - sqrt(d12))/(c1_q₀*ω))
+else
+       k12 = 0
+end
+eta1 = 0.999 
+d13 = (n1_q₁^2 + 4*eta1*(n1_q₀+ω^2*K^2*n1_q₂))
+k13 = (n1_q₁ + sqrt(d13))/(2*eta1*ω)
 
-## Proof P-μ₀ still positive
-Pμ = NewOperatorP(mid.(P_finite) - μ₀*I, map(v -> mid.(v), P_bar) - μ₀*I(2))
+d21 = (c2_q₁^2 + 4*c2_q₀*c2_q₂)
+if inf(d21) > 0
+       k21  =max((c1_q₁ + sqrt(d21))/(2*c2_q₂*ω),(c2_q₁ - sqrt(d21))/(2*c2_q₂*ω))
+else
+       k21 = 0
+end
+epsilon2 = 0.4 #...
+d22 = (c2_q₁^2 + 4*epsilon2*c2_q₀*c2_q₂)
+if inf(d22) > 0
+       k22 = max(-(c2_q₁ + sqrt(d22))/(c2_q₂*ω),-(c2_q₁ - sqrt(d22))/(c2_q₀*ω))
+else
+       k22 = 0
+end
+eta2 = 0.999
+d23 = (n2_q₁^2 + 4*eta2*(n2_q₀+ω^2*K^2*n2_q₂))
+k23 = (n2_q₁ + sqrt(d23))/(2*eta2*ω)
 
-Dom = CosFourier(N, ω)^2
+M0 = Int(ceil((sup(max(N, K, k11, k12, k13, k21, k22, k23)))))
+
+# Define spaces
+Littledom = CosFourier(M0, ω)^2
 Band = CosFourier(K, ω)^2
+Dom = Littledom ⊕ Band
+Bigdom = Dom ⊕ Band
+
+
+Q0 = zeros(Interval{Float64},Bigdom, Bigdom)
+Q1 = zero(Q0)
+Q2 = zero(Q0)
+for j ∈ 1:2, i ∈ 1:2
+    project!(component(Q0,i,j), Multiplication(q₀_bar[i,j]))
+    mul!(component(Q1,i,j), Multiplication(sum(l -> q₁_bar[l][i,j], 1)), Derivative(1)) 
+    mul!(component(Q2,i,j), Multiplication(q₂_bar[i,j]), Laplacian())
+end
+Q̂ = Q0 + Q1 + Q2
+opnorm(Q̂*project(Γ_op, domain(Q̂), domain(Q̂)) - project(Γ_op, codomain(Q̂), codomain(Q̂))*Q̂', 1) #is sym ?
+
+
+## Proof P-μ still positive
+
+Γ = project(Γ_op, Bigdom, Bigdom)
+L = DF(model, u_bar, Bigdom, Bigdom)
+Δ = project(Laplacian(), Bigdom, Bigdom)
+component(Δ,1,1)[0,0] += -1
+component(Δ,2,2)[0,0] += -1
+# construct P with Lyapunov equations
+P_finite_2N = Γ * LinearOperator(Bigdom, Bigdom, Symmetric(lyap(adjoint(mid.(coefficients(L))), -mid.(coefficients(project(invΓ_op, Bigdom, Bigdom)*Δ)))))
+P_finite = project(P_finite_2N, Littledom, Littledom)
+
+# P_ext = project(NewOperatorP(P_finite, P_bar), Bigdom, Bigdom)
+# E,V = eigen(mid.(coefficients(P_ext)))
+μ = 1e-4#E[1]*0.5
+Pμ = NewOperatorP(mid.(P_finite) - μ*I, map(v -> mid.(v), P_bar) - μ*I(2))
 
 ## Approx a square root of Pμ.W_bar
 Pμ_bar_mid = map(v -> mid.(v), Pμ.W_bar)
@@ -167,7 +233,7 @@ norm(tr_bar + 2*s_bar - t_bar^2)
 sqrt_P_bar = (Pμ_bar_mid + [s_bar 0; 0 s_bar]).*[1/t_bar]
 norm(norm.(Pμ_bar_mid - sqrt_P_bar*sqrt_P_bar),1)
 
-# finer method to get square root
+# finer method to get square root (if needed)
 # N_root = 2N
 # D_square = x -> project(Multiplication(2x), CosFourier(N_root,ω), CosFourier(N_root,ω))
 # s_bar2, _ = newton(x -> (x^̄2 - det_bar, D_square(x)), project(s_bar, CosFourier(N_root, ω)); tol=1e-14, maxiter=20)
@@ -178,11 +244,9 @@ norm(norm.(Pμ_bar_mid - sqrt_P_bar*sqrt_P_bar),1)
 # norm(norm.(Pμ_bar_mid - sqrt_P_bar2*sqrt_P_bar2),1)
 # sqrt_P_bar2 = map(v -> interval.(v), sqrt_P_bar2) 
 
-Bigdom = Dom ⊕ Band
 C_bar = map(v -> mid.(v), sqrt_P_bar)
 invC_bar = approx_inv(C_bar) #map(v -> interval.(inv(mid.(v))), sqrt_P_bar)
 norm(norm.(approx_inv(invC_bar) - sqrt_P_bar),1)
-#MC_bar = NewOperatorP(null_op, C_bar)
 MinvC_bar = NewOperatorP(null_op, map(v -> interval.(v), invC_bar))
 MP_bar = NewOperatorP(null_op, map(v -> interval.(v), Pμ.W_bar))
 
@@ -191,9 +255,9 @@ valid_invC_bar = map(v -> ValidatedSequence(v, Ell1(GeometricWeight(interval(1))
 
 #norm(norm.(valid_Pμ_W_bar - approx_inv(valid_invC_bar)^2),1) # should be small
 
-P̃ = project(MinvC_bar, Dom, Bigdom) * (Pμ.P_finite - project(MP_bar, Dom, Dom)) * project(MinvC_bar, Bigdom, Dom) + I
+P̃ = project(MinvC_bar, Littledom, Bigdom) * (Pμ.P_finite - project(MP_bar, Littledom, Littledom)) * project(MinvC_bar, Bigdom, Littledom) + I
 opnorm(P̃*Γ- Γ*P̃', 1) #is sym ?
-sym_P̃ = Symmetric(coefficients(P̃*project(Γ, Bigdom, Bigdom)))#is sym ?
+sym_P̃ = Symmetric(coefficients(P̃*Γ))#is sym ?
 Ẽ = eigen(mid.(sym_P̃))
 Ṽ, invṼ = Ẽ.vectors, Ẽ.vectors'
 D̃ = invṼ*sym_P̃*Ṽ
@@ -207,7 +271,7 @@ else
        "P̃ is non postive"
 end
 
-μ = μ₀ - norm(norm.(valid_Pμ_W_bar - approx_inv(valid_invC_bar)^2),1)
+μ = μ - norm(norm.(valid_Pμ_W_bar - approx_inv(valid_invC_bar)^2),1)
 if inf(μ) > 0
        display("P is positive definite")
 else
@@ -216,49 +280,35 @@ end
 
 # Gershgorin analysis of Q
 P = NewOperatorP(P_finite, P_bar)
-L_ext = DF(model, u_bar, CosFourier(M+2K, ω)^2, CosFourier(M+2K, ω)^2)
-Q_ext = - (project(P, CosFourier(M+K, ω)^2, CosFourier(M+2K, ω)^2) * project(L_ext, CosFourier(M, ω)^2, CosFourier(M+K, ω)^2) + project(Γ * adjoint(L_ext) * Γ⁻¹, CosFourier(M+K, ω)^2, CosFourier(M+2K, ω)^2) * project(P_ext, CosFourier(M, ω)^2, CosFourier(M+K, ω)^2))
+L_ext = DF(model, u_bar, Bigdom, Bigdom)
+Q_ext = - (project(P, Bigdom, Dom ⊕ Band) * project(L_ext, Littledom, Bigdom) + project(Γ * adjoint(L_ext) * project(invΓ_op, Bigdom, Bigdom ), Bigdom, Dom ⊕ Band) * project(P, Littledom, Bigdom))
+# Q_ext = - (project(P, Bigdom, Bigdom) * L_ext + Γ * adjoint(L_ext) * project(invΓ_op, Bigdom, Bigdom) * project(P, Bigdom, Bigdom))
 
-## Build of Q
-# order 0 terms
-# ∇ = StabilityNonlinearDiffusion.Gradient{1}()
+opnorm(project(Q_ext, Bigdom, Bigdom)*Γ - Γ*project(Q_ext, Bigdom, Bigdom)', 1) #is sym ?
+# Warning, we lost the symmetry of Q_ext !
 
-#!# Incorrect Non Adapté pour 2D pour le moment !!
-q₀_bar = q₀(A_bar, B_bar, C_bar, P_bar)
-n_q₀ = 2*sum(abs.(q₀_bar[1][1:end]))
-# order 1 terms
-q₁_bar = q₁(A_bar, B_bar, P_bar)
-n_q₁ = sum(l-> 2*sum(abs.(q₁_bar[l][1][2:end])), 1:1)
-# order 2 terms
-q₂_bar = q₂(A_bar, P_bar)
-n_q₂ = 2*sum(abs.(q₂_bar[1][2:end]))
-
-Q0 = zeros(Interval{Float64},CosFourier(M+2K, ω)^2, CosFourier(M+2K, ω)^2)
-Q1 = zero(Q0)
-Q2 = zero(Q0)
-for j ∈ 1:2, i ∈ 1:2
-    project!(component(Q0,i,j), Multiplication(q₀_bar[i,j]))
-    mul!(component(Q1,i,j), Multiplication(sum(l -> q₁_bar[l][i,j], 1)), Derivative(1)) 
-    mul!(component(Q2,1,1), Multiplication(q₂_bar[i,j]), Laplacian())
-end
-Q = Q0 + Q1 + Q2
+## Build Q
+Q = copy(Q̂)
 for j ∈ 1:2, i ∈ 1:2
     _tmp_ = component(Q_ext, i, j)
     component(Q, i, j)[indices(codomain(_tmp_)),indices(domain(_tmp_))] .= _tmp_
 end
-Q
 
-## Find index of truncation
+## Diagonalization (if needed)
+E_Q, V_Q = eigen(mid.(coefficients(Q)))
+# # Q n'est pas positif .....
+# V = NewOperatorP(LinearOperator(CosFourier(M0,ω)^2, CosFourier(M0,ω)^2, interval.(V_Q[1:2*(M0+1),1:2*(M0+1)])), 2*interval.(g_bar))
+# Vt = NewOperatorP(LinearOperator(CosFourier(M0,ω)^2, CosFourier(M0,ω)^2, interval.(inv(V_Q)[1:2*(M0+1),1:2*(M0+1)])), 2*interval.(g_bar))
+# Q̃ = project(V, domain(Q), domain(Q))*Q*project(Vt, domain(Q), domain(Q))
+# normV = max( opnorm(interval.(V.P_finite),1), 1 )
+# Δ = project(Laplacian(), domain(V.P_finite), domain(V.P_finite))
+# Δ[1,1] -= 1
+# _r, _c, _v = RadiiPolynomial.SparseArrays.findnz(coefficients(Δ))
+# invΔ = LinearOperator(domain(V.P_finite), domain(V.P_finite), RadiiPolynomial.SparseArrays.sparse(_r, _c, inv.(_v)))
+# norminvV = max( opnorm(invΔ*Vt.P_finite*Δ, 1), 1)
 
 
-## Diagonalization if needed
-#E_Q, V_Q = eigen(mid.(coefficients(Q_ext)[1:M+1, 1:M+1]))
-
-# Q̃ = zero(Q)
-# project!(component(Q̃,1,1), component(Q,1,1))
-# coefficients(component(Q̃,1,1))[1:M0+1,1:M0+1] .= V_Q[1:M0+1,1:M0+1]*coefficients(Q)[1:M0+1,1:M0+1]*V_Q[1:M0+1,1:M0+1]^(-1)
-
-
+Q̃ = Q
 ## Compute μ_∞
 normp =  norm(norm.(interval.(P.W_bar)),1)
 opnormP = max( opnorm(interval.(project(P, domain(P.P_finite), domain(P.P_finite) ⊕ space(P.W_bar[1,1])^2)), 1), normp)
@@ -269,31 +319,38 @@ normp2 = norm( norm.(differentiate.(interval.(P.W_bar), 2), 1), 1)
 Δ[1,1] -= 1
 _r, _c, _v = RadiiPolynomial.SparseArrays.findnz(coefficients(Δ))
 invΔ = LinearOperator(domain(P.P_finite), domain(P.P_finite), RadiiPolynomial.SparseArrays.sparse(_r, _c, inv.(_v)))
-opnormDPD = max( opnorm(invΔ*P.P_finite*Δ, 1), normp + 2*normp1/(ω*N) + normp2/(ω*N)^2)
+opnormDPD = max( opnorm(invΔ*P.P_finite*Δ, 1), normp + 2*normp1/(ω*M0) + normp2/(ω*M0)^2)
 C_L = Z₂*ϵ_u/opnorm_approxDF⁻¹Δ
 C_Q = (opnormP + opnormDPD)*C_L
 C_V = C_Q #norminvV*normV*C_Q
 
-eta = 0.125
-epsilon = 0.5
 
-small = (1-(C_V + n_q₂ + eta)/(-q₂_bar[1][0]*(1-epsilon))) ## must be smaller than 1, if not adjust eta and epsilon
-μ_inf = small*Q̃[M0+K,M0+K]
-
+small1 = (1-(C_V + n1_q₂ + eta1))/(-c1_q₂*(1-epsilon1)) ## must be smaller than 1, if not adjust eta and epsilon
+small2 = (1-(C_V + n2_q₂ + eta2))/(-c2_q₂*(1-epsilon2)) ## must be smaller than 1, if not adjust eta and epsilon
+μ_inf =inf(min(small1,small2)*Q̃[M0+K,M0+K])
 
 
 ## Determine Q positive definite
-disk_Q̃ = gershgorin((coefficients(Q_ext))[1:M+1, 1:M+2K+1])
+Q̃1 = hcat(coefficients(component(Q̃,1,1))[1:M0+K, 1:M0+2K+1],coefficients(component(Q̃,1,2))[1:M0+K, 1:M0+2K+1])
+disk1_Q̃ = gershgorin(Q̃1)
+disk1_Q̃[1,2] += C_V
+disk1_Q̃[2:end,2] += [C_V*(ω*k)^2 for k=1:size(disk1_Q̃,1)-1]
+Q̃2 = hcat(coefficients(component(Q̃,2,2))[1:M0+K, 1:M0+2K+1],coefficients(component(Q̃,2,1))[1:M0+K, 1:M0+2K+1])
+disk2_Q̃ = gershgorin(Q̃2) 
+disk2_Q̃[1,2] += C_V
+disk2_Q̃[2:end,2] += [C_V*(ω*k)^2 for k=1:size(disk2_Q̃,1)-1]
+
+disk_Q̃ = vcat(disk1_Q̃, disk2_Q̃)
 # gersh_Q̃ = plot_gershgorin(mid.(disk_Q̃))
 # save("fig/skt_gershQ.eps", gersh_Q̃)
 
-MU = inf.(disk_Q̃[:,1]) - sup.(disk_Q̃[:,2])
+MU = inf.(disk2_Q̃[:,1]) - sup.(disk2_Q̃[:,2])
 @show μ = min(minimum(MU), inf(μ_inf))
 
 if μ > 0
-       display("Q is positive definite")
+    display("Q is positive definite")
 else
-       display("Q is not positive")
+    display("We cannot conclude")
 end
 
 ## A bound on the spectral gap of L
