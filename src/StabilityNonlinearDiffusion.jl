@@ -2,6 +2,21 @@ module StabilityNonlinearDiffusion
 
 using RadiiPolynomial
 using LinearAlgebra
+
+# tools
+function convert_CosSin(a::Sequence{S} where S <: CosFourier)
+    # Convert a CosFourier sequence to a CosSin sequence in the given space
+    S = space(a).space
+    return Sequence(SinFourier(S.order + 1, S.frequency ), a.coefficients) 
+end
+
+function convert_CosSin(a::Sequence{S} where S <: CartesianPower{T} where T <: CosFourier)
+    # Convert a CosFourier sequence to a CosSin sequence in the given space
+    S = space(a)
+    s = space(S).space
+    return Sequence(SinFourier(s.order + 1, s.frequency )^S.n, a.coefficients) 
+end
+
 # models
 
 @kwdef struct ScalarExample{T}
@@ -11,16 +26,33 @@ using LinearAlgebra
 end
 
 A(::ScalarExample, u) = [2u[1];;]
-
-R(model::ScalarExample, u) = [model.α * u[1] - model.β * u[1]^2 + Sequence(CosFourier(4, frequency(u[1])), [0.5, 1.5, 1, -0.5, 3])]
+a(::ScalarExample, u) = [u[1]^2]
 
 B(::ScalarExample, u) = [[zero(differentiate(u[1]));;]]
+b(::ScalarExample, u) = [zero(differentiate(u[1]))]
 
 C(model::ScalarExample, u) = [model.α - 2model.β * u[1];;]
+c(model::ScalarExample, u) = [model.α * u[1] - model.β * u[1]^2 + Sequence(CosFourier(4, frequency(u[1])), [0.5, 1.5, 1, -0.5, 3])]
+
 
     export ScalarExample
 
 #-
+# @kwdef struct Buckmaster{T}
+#     # parameters of the reaction
+#     β :: T
+# end
+
+# a(:: Buckmaster, u) = [u[1]^4]
+# A(::Buckmaster, u) = [4u[1]^3;;]
+
+# b(model::Buckmaster, u) = [model.β*convert_CosSin(u[1]^3)] #translate in sinus !!
+# B(model::Buckmaster, u) = [[3*model.β*convert_CosSin(u[1]^2);;]]
+
+# c(::Buckmaster, u) = [project(u[1],CosFourier(0, frequency(u[1])))]
+# C(::Buckmaster, u) = [ones(CosFourier(0, frequency(u[1])));;]
+
+#     export Buckmaster
 
 @kwdef struct SKT{T} # Shigesada-Kawasaki-Teramoto system
     # parameters of the diffusion
@@ -52,19 +84,26 @@ function B_SKT(u)
     B = [ [zero(differentiate(u[j], Tuples_E[i])) for j ∈ 1:n]*e for i ∈ 1:d]
     return B
 end
+
+
 export B_SKT
+a(model::SKT, u) = [model.d₁ * u[1] + model.d₁₁ * u[1]^2 + model.d₁₂ * u[1] * u[2] 
+                    model.d₂ * u[2] +  model.d₂₁ * u[2] * u[1] + model.d₂₂ * u[2]^2]
 A(model::SKT, u) = [model.d₁ + 2model.d₁₁ * u[1] + model.d₁₂ * u[2]                 model.d₁₂ * u[1]
                                                    model.d₂₁ * u[2]     model.d₂ +  model.d₂₁ * u[1] + 2model.d₂₂ * u[2]]
 
-R(model::SKT, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
-                    (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
 
 # B(::SKT, u) = [[zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))
 #                 zero(differentiate(u[1], (1, 0))) zero(differentiate(u[2], (1, 0)))],
 #                [zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))
 #                 zero(differentiate(u[1], (0, 1))) zero(differentiate(u[2], (0, 1)))]]
-B(model::SKT, u) = B_SKT(u)
+b(::SKT, u) = [zero(differentiate(u[1])) 
+                zero(differentiate(u[2]))]
 
+B(::SKT, u) = B_SKT(u)
+
+c(model::SKT, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
+                    (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
 C(model::SKT, u) = [model.r₁ - 2model.a₁ * u[1] - model.b₁ * u[2]               -model.b₁ * u[1]
                                                  -model.b₂ * u[2]     model.r₂ - model.b₂ * u[1] - 2model.a₂ * u[2]]
 
@@ -87,15 +126,20 @@ C(model::SKT, u) = [model.r₁ - 2model.a₁ * u[1] - model.b₁ * u[2]         
     a₂  :: T
 end
 
+a(model::Porous, u) = [model.d₁₁ * u[1]^2 + model.d₁₂ * u[1] * u[2]
+                       model.d₂₁ * u[2] * u[1] + model.d₂₂ * u[2]^2]
+                    
 A(model::Porous, u) = [model.d₁₁ * u[1]     model.d₁₂ * u[1]
                        model.d₂₁ * u[2]     model.d₂₂ * u[2]]
 
-R(model::Porous, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
-                       (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
+b(model::Porous, u) = [ model.d₁₂ * differentiate(u[2]) * u[1] - model.d₁₂ * differentiate(u[1]) * u[2]
+                        -model.d₂₁ * differentiate(u[2]) * u[1] + model.d₂₁ * differentiate(u[1]) * u[2]] #to verify !!
 
 B(model::Porous, u) = [[ model.d₁₂ * differentiate(u[2])     -model.d₁₂ * differentiate(u[1])
                         -model.d₂₁ * differentiate(u[2])      model.d₂₁ * differentiate(u[1])]]
 
+c(model::Porous, u) = [(model.r₁ - model.a₁ * u[1] - model.b₁ * u[2]) * u[1]
+                       (model.r₂ - model.b₂ * u[1] - model.a₂ * u[2]) * u[2]]
 C(model::Porous, u) = [model.r₁ - 2model.a₁ * u[1] - model.b₁ * u[2]               -model.b₁ * u[1]
                                                     -model.b₂ * u[2]     model.r₂ - model.b₂ * u[1] - 2model.a₂ * u[2]]
 
@@ -115,13 +159,15 @@ _nspaces(::TensorSpace{<:NTuple{N,BaseSpace}}) where {N} = N
 
 function F(model, u, s)
     _u_ = [component(u, i) for i ∈ 1:nspaces(s)]
-    _A_ = A(model, _u_)
-    _R_ = R(model, _u_)
+    _a_ = a(model, _u_)
+    _b_ = b(model,_u_)
+    _c_ = c(model, _u_)
 
     d = _nspaces(s[1])
     ∇ = Gradient{d}()
+    Δ = Laplacian()
 
-    _F_ = sum(l -> [∇[l]] .* (_A_ * ([∇[l]] .* _u_)), 1:d) + _R_
+    _F_ = [Δ].*_a_ + sum(l -> [∇[l]] .* _b_, 1:d) + _c_
 
     seq = zeros(eltype(u), s)
     for i ∈ 1:nspaces(s)

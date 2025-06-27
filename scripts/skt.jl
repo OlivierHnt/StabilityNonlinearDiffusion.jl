@@ -46,14 +46,14 @@ u_guess = Sequence(CosFourier(K, mid(ω))^2, [u₁[1:K+1] ; u₂[1:K+1]])
 
 u_approx, _ = newton(u -> (F(mid_model, u, space(u)), DF(mid_model, u, space(u), space(u))), u_guess)
 
-fig = Figure()
-ax = Axis(fig[1,1], aspect = AxisAspect(2))
-lines!(ax, LinRange(0, 1, 100), x -> component(u_approx,1)(x); linewidth = 2, color = :green, linestyle = :solid)
-lines!(ax, LinRange(0, 1, 100), x -> component(u_approx,2)(x); linewidth = 2, color = :blue, linestyle = :dash)
-xlims!(0,1)
-ylims!(0,2)
-display(fig)
-save("fig/skt_solution.eps",fig)
+# fig = Figure()
+# ax = Axis(fig[1,1], aspect = AxisAspect(2))
+# lines!(ax, LinRange(0, 1, 100), x -> component(u_approx,1)(x); linewidth = 2, color = :green, linestyle = :solid)
+# lines!(ax, LinRange(0, 1, 100), x -> component(u_approx,2)(x); linewidth = 2, color = :blue, linestyle = :dash)
+# xlims!(0,1)
+# ylims!(0,2)
+# display(fig)
+# save("fig/skt_solution.eps",fig)
 
 
 

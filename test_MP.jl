@@ -70,6 +70,8 @@ function RadiiPolynomial.project(a::ValidatedSequence, space_dest::VectorSpace, 
 end
 
 
+
+
 fig = Figure()
 ax = Axis(fig[1,1], aspect = DataAspect())
 # truc = project(P_ext - μ₀*I, CosFourier(M, ω)^1,CosFourier(M+2K, ω)^1) - project(C, CosFourier(M+K, ω)^1, CosFourier(M+2K, ω)^1)*project(Γ*C, CosFourier(M, ω)^1, CosFourier(M+K, ω)^1)
